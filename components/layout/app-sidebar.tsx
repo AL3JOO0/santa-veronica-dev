@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -9,7 +10,6 @@ import {
   Users,
   Images,
   Settings,
-  Aperture,
 } from 'lucide-react'
 
 import {
@@ -46,25 +46,26 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="border-b p-4">
-        <Link href="/" className="flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Aperture className="size-5" />
-          </span>
-          <span className="flex flex-col leading-none">
-            <span className="font-serif text-lg font-medium tracking-tight">
-              Estudio
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Fotografía profesional
-            </span>
-          </span>
+      <SidebarHeader className="border-b px-4 py-4">
+        <Link
+          href="/"
+          className="flex w-full items-center justify-center overflow-hidden rounded-xl bg-white px-3 py-2 transition-all duration-300 hover:shadow-sm"
+        >
+          <Image
+            src="/LOGOSV.JPG"
+            alt="Santa Verónica Estudio"
+            width={4030}
+            height={1975}
+            priority
+            className="h-auto w-full max-w-[190px] object-contain"
+          />
         </Link>
       </SidebarHeader>
 
       <SidebarContent className="px-2">
         <SidebarGroup>
           <SidebarGroupLabel>Gestión</SidebarGroupLabel>
+
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNav.map((item) => (
@@ -85,6 +86,7 @@ export function AppSidebar() {
 
         <SidebarGroup>
           <SidebarGroupLabel>Sistema</SidebarGroupLabel>
+
           <SidebarGroupContent>
             <SidebarMenu>
               {secondaryNav.map((item) => (
@@ -111,8 +113,12 @@ export function AppSidebar() {
               AM
             </AvatarFallback>
           </Avatar>
+
           <div className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate text-sm font-medium">Ana Morales</span>
+            <span className="truncate text-sm font-medium">
+              Ana Morales
+            </span>
+
             <span className="truncate text-xs text-muted-foreground">
               Administradora
             </span>
