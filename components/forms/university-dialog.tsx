@@ -1,7 +1,8 @@
-'use client'
+"use client"
 
-import * as React from 'react'
-import { toast } from 'sonner'
+import * as React from "react"
+import { toast } from "sonner"
+
 import {
   Dialog,
   DialogContent,
@@ -9,174 +10,299 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+} from "@/components/ui/dialog"
+
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
+
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { useStore } from '@/lib/store'
-import type { University } from '@/lib/types'
+} from "@/components/ui/select"
+
+import type { University } from "@/lib/types"
 
 function initials(name: string) {
   return name
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('')
+    .map(
+      (word) =>
+        word[0]?.toUpperCase() ?? "",
+    )
+    .join("")
 }
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   university?: University
+
+  onSubmit: (data: {
+    name: string
+    short_name: string
+    location: string
+    description: string
+    active: boolean
+  }) => Promise<void>
 }
 
-export function UniversityDialog({ open, onOpenChange, university }: Props) {
-  const store = useStore()
+export function UniversityDialog({
+  open,
+  onOpenChange,
+  university,
+  onSubmit,
+}: Props) {
   const editing = Boolean(university)
 
-  const [name, setName] = React.useState('')
-  const [location, setLocation] = React.useState('')
-  const [description, setDescription] = React.useState('')
-  const [active, setActive] = React.useState(true)
+  const [name, setName] = React.useState("")
+  const [location, setLocation] = React.useState("")
+  const [description, setDescription] =
+    React.useState("")
+  const [active, setActive] =
+    React.useState(true)
+
+  /*
+   * =========================================================
+   * CARGAR DATOS
+   * =========================================================
+   */
 
   React.useEffect(() => {
-  if (open) {
-    setName(university?.name ?? '')
-    setLocation(university?.location ?? '')
-    setDescription(university?.description ?? '')
-    setActive(university?.active ?? true)
-  }
-}, [open, university])
+    if (!open) {
+      return
+    }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    setName(university?.name ?? "")
+    setLocation(university?.location ?? "")
+    setDescription(
+      university?.description ?? "",
+    )
+    setActive(
+      university?.active ?? true,
+    )
+  }, [open, university])
 
-    if (!name.trim()) {
-      toast.error('El nombre es obligatorio')
+  /*
+   * =========================================================
+   * SUBMIT
+   * =========================================================
+   */
+
+  const handleSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault()
+
+    const trimmedName = name.trim()
+
+    if (!trimmedName) {
+      toast.error(
+        "El nombre es obligatorio",
+      )
       return
     }
 
     try {
       const payload = {
-        name: name.trim(),
-        short_name: initials(name),
+        name: trimmedName,
+        short_name: initials(trimmedName),
         location: location.trim(),
         description: description.trim(),
         active,
       }
 
-      if (editing && university) {
-        await store.updateUniversity(
-          university.id,
-          payload
-        )
+      await onSubmit(payload)
 
-        toast.success('Universidad actualizada')
-      } else {
-        await store.addUniversity(payload)
-
-        toast.success('Universidad creada')
-      }
+      toast.success(
+        editing
+          ? "Universidad actualizada"
+          : "Universidad creada",
+      )
 
       onOpenChange(false)
-
     } catch (error) {
-      console.error(error)
+      console.error(
+        "Error guardando universidad:",
+        error,
+      )
 
       toast.error(
         editing
-          ? 'No se pudo actualizar la universidad'
-          : 'No se pudo crear la universidad'
+          ? "No se pudo actualizar la universidad"
+          : "No se pudo crear la universidad",
       )
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+    >
       <DialogContent className="sm:max-w-md">
+
         <form onSubmit={handleSubmit}>
+
           <DialogHeader>
+
             <DialogTitle>
-              {editing ? 'Editar universidad' : 'Nueva universidad'}
+              {editing
+                ? "Editar universidad"
+                : "Nueva universidad"}
             </DialogTitle>
+
             <DialogDescription>
               {editing
-                ? 'Actualiza la información de la universidad.'
-                : 'Registra una nueva universidad en el sistema.'}
+                ? "Actualiza la información de la universidad."
+                : "Registra una nueva universidad en el sistema."}
             </DialogDescription>
+
           </DialogHeader>
 
           <FieldGroup className="py-4">
+
+            {/* NOMBRE */}
+
             <Field>
-              <FieldLabel htmlFor="uni-name">Nombre</FieldLabel>
+
+              <FieldLabel htmlFor="uni-name">
+                Nombre
+              </FieldLabel>
+
               <Input
                 id="uni-name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(event) =>
+                  setName(
+                    event.target.value,
+                  )
+                }
                 placeholder="Universidad Nacional"
                 autoFocus
               />
+
             </Field>
+
+            {/* UBICACIÓN */}
+
             <Field>
-              <FieldLabel htmlFor="uni-location">Ubicación</FieldLabel>
+
+              <FieldLabel htmlFor="uni-location">
+                Ubicación
+              </FieldLabel>
+
               <Input
                 id="uni-location"
                 value={location}
-                onChange={(e) => setLocation(e.target.value)}
+                onChange={(event) =>
+                  setLocation(
+                    event.target.value,
+                  )
+                }
                 placeholder="Ciudad, País"
               />
+
             </Field>
+
+            {/* DESCRIPCIÓN */}
+
             <Field>
-              <FieldLabel htmlFor="uni-desc">Descripción</FieldLabel>
+
+              <FieldLabel htmlFor="uni-desc">
+                Descripción
+              </FieldLabel>
+
               <Textarea
                 id="uni-desc"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(event) =>
+                  setDescription(
+                    event.target.value,
+                  )
+                }
                 placeholder="Breve descripción de la institución"
                 rows={3}
               />
+
             </Field>
+
+            {/* ESTADO */}
+
             <Field>
-  <FieldLabel>Estado</FieldLabel>
 
-  <Select
-    value={active ? 'activo' : 'inactivo'}
-    onValueChange={(value) => setActive(value === 'activo')}
-  >
-    <SelectTrigger className="w-full">
-      <SelectValue />
-    </SelectTrigger>
+              <FieldLabel>
+                Estado
+              </FieldLabel>
 
-    <SelectContent>
-      <SelectItem value="activo">Activo</SelectItem>
-      <SelectItem value="inactivo">Inactivo</SelectItem>
-    </SelectContent>
-  </Select>
-</Field>
+              <Select
+                value={
+                  active
+                    ? "activo"
+                    : "inactivo"
+                }
+                onValueChange={(value) =>
+                  setActive(
+                    value === "activo",
+                  )
+                }
+              >
+
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+
+                <SelectContent>
+
+                  <SelectItem value="activo">
+                    Activo
+                  </SelectItem>
+
+                  <SelectItem value="inactivo">
+                    Inactivo
+                  </SelectItem>
+
+                </SelectContent>
+
+              </Select>
+
+            </Field>
+
           </FieldGroup>
 
           <DialogFooter>
+
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() =>
+                onOpenChange(false)
+              }
             >
               Cancelar
             </Button>
+
             <Button type="submit">
-              {editing ? 'Guardar cambios' : 'Crear universidad'}
+              {editing
+                ? "Guardar cambios"
+                : "Crear universidad"}
             </Button>
+
           </DialogFooter>
+
         </form>
+
       </DialogContent>
     </Dialog>
   )

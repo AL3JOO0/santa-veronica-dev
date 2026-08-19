@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { RowActions } from "@/components/shared/row-actions"
 import { formatDate } from "@/lib/format"
-import type { Event } from "@/lib/types"
+import type { EventItem } from "@/lib/types"
 
 export function EventCard({
   event,
@@ -16,7 +16,7 @@ export function EventCard({
   onEdit,
   onDelete,
 }: {
-  event: Event
+  event: EventItem
   studentCount: number
   photoCount: number
   universityName?: string
@@ -30,18 +30,19 @@ export function EventCard({
         className="relative block aspect-[16/10] overflow-hidden bg-muted"
         aria-label={`Ver ${event.name}`}
       >
-        {event.cover ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={event.cover || "/placeholder.svg"}
-            alt={`Portada de ${event.name}`}
-            className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex size-full items-center justify-center">
-            <CalendarDays className="size-10 text-muted-foreground" />
-          </div>
-        )}
+        <Link
+  href={`/eventos/${event.id}`}
+  className="relative block aspect-[16/10] overflow-hidden bg-muted"
+  aria-label={`Ver ${event.name}`}
+>
+  <div className="flex size-full items-center justify-center">
+    <CalendarDays className="size-10 text-muted-foreground" />
+  </div>
+
+  <div className="absolute left-3 top-3">
+    <StatusBadge status={event.status} />
+  </div>
+</Link>
         <div className="absolute left-3 top-3">
           <StatusBadge status={event.status} />
         </div>
