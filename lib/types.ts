@@ -1,4 +1,7 @@
-export type Status = 'activo' | 'archivado' | 'borrador'
+export type Status =
+  | 'activo'
+  | 'archivado'
+  | 'borrador'
 
 export interface University {
   id: string
@@ -17,9 +20,9 @@ export interface EventItem {
   name: string
   description: string
   date: string
-  cover: string
   status: Status
   createdAt: string
+  updatedAt: string | null
 }
 
 export interface Student {

@@ -2,9 +2,16 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { Building2, LayoutGrid, List, Plus } from "lucide-react"
+import {
+  Building2,
+  LayoutGrid,
+  List,
+  Plus,
+} from "lucide-react"
 
 import { useStore } from "@/lib/store"
+import { useUniversities } from "@/hooks/use-universities"
+
 import { PageHeader } from "@/components/shared/page-header"
 import { SearchInput } from "@/components/shared/search-input"
 import { EmptyState } from "@/components/shared/empty-state"
@@ -12,8 +19,12 @@ import { UniversityCard } from "@/components/universities/university-card"
 import { UniversityDialog } from "@/components/forms/university-dialog"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { RowActions } from "@/components/shared/row-actions"
+
 import { Button } from "@/components/ui/button"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group"
 
 import {
   Table,
@@ -25,31 +36,66 @@ import {
 } from "@/components/ui/table"
 
 import { Card } from "@/components/ui/card"
+
 import {
   Avatar,
   AvatarFallback,
 } from "@/components/ui/avatar"
 
 import { formatDate } from "@/lib/format"
+
 import type { University } from "@/lib/types"
 
+import type {
+  CreateUniversityInput,
+} from "@/lib/services/universities.service"
+
 type ActiveFilter = "all" | "active" | "inactive"
+type ViewMode = "grid" | "table"
 
 export function UniversitiesView() {
+  /*
+   * =========================================================
+   * UNIVERSIDADES
+   * =========================================================
+   */
+
   const {
     universities,
-    events,
-    deleteUniversity,
-  } = useStore()
+    loading,
+    error,
+    addUniversity,
+    editUniversity,
+    removeUniversity,
+    reload,
+  } = useUniversities()
+
+  /*
+   * =========================================================
+   * EVENTOS
+   * =========================================================
+   *
+   * Temporalmente los eventos siguen en el store.
+   */
+
+  const { events } = useStore()
+
+  /*
+   * =========================================================
+   * ESTADO DE LA INTERFAZ
+   * =========================================================
+   */
 
   const [query, setQuery] = useState("")
+
   const [activeFilter, setActiveFilter] =
     useState<ActiveFilter>("all")
 
   const [view, setView] =
-    useState<"grid" | "table">("grid")
+    useState<ViewMode>("grid")
 
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogOpen, setDialogOpen] =
+    useState(false)
 
   const [editing, setEditing] =
     useState<University | null>(null)
@@ -58,8 +104,11 @@ export function UniversitiesView() {
     useState<University | null>(null)
 
   /*
-   * Cuenta cuántos eventos tiene cada universidad.
+   * =========================================================
+   * EVENTOS POR UNIVERSIDAD
+   * =========================================================
    */
+
   const eventCountByUni = useMemo(() => {
     const map = new Map<string, number>()
 
@@ -74,9 +123,12 @@ export function UniversitiesView() {
   }, [events])
 
   /*
-   * Filtra las universidades.
+   * =========================================================
+   * FILTRADO DE UNIVERSIDADES
+   * =========================================================
    */
-  const filtered = useMemo(() => {
+
+  const filteredUniversities = useMemo(() => {
     const normalizedQuery = query
       .trim()
       .toLowerCase()
@@ -92,29 +144,152 @@ export function UniversitiesView() {
 
       const matchesActive =
         activeFilter === "all" ||
-        (activeFilter === "active" && university.active) ||
-        (activeFilter === "inactive" && !university.active)
+        (activeFilter === "active" &&
+          university.active) ||
+        (activeFilter === "inactive" &&
+          !university.active)
 
       return matchesQuery && matchesActive
     })
-  }, [universities, query, activeFilter])
+  }, [
+    universities,
+    query,
+    activeFilter,
+  ])
+
+  /*
+   * =========================================================
+   * CREAR UNIVERSIDAD
+   * =========================================================
+   */
 
   function openCreate() {
     setEditing(null)
     setDialogOpen(true)
   }
 
+  /*
+   * =========================================================
+   * EDITAR UNIVERSIDAD
+   * =========================================================
+   */
+
   function openEdit(university: University) {
     setEditing(university)
     setDialogOpen(true)
   }
 
+  /*
+   * =========================================================
+   * GUARDAR UNIVERSIDAD
+   * =========================================================
+   *
+   * El Dialog solamente recoge los datos.
+   *
+   * Aquí decidimos si debemos:
+   *
+   * - crear
+   * - actualizar
+   */
+
+  async function handleUniversitySubmit(
+    data: CreateUniversityInput,
+  ) {
+    if (editing) {
+      await editUniversity(
+        editing.id,
+        data,
+      )
+    } else {
+      await addUniversity(data)
+    }
+  }
+
+  /*
+   * =========================================================
+   * ELIMINAR UNIVERSIDAD
+   * =========================================================
+   */
+
+  async function handleDelete() {
+    if (!deleting) {
+      return
+    }
+
+    try {
+      await removeUniversity(deleting.id)
+
+      setDeleting(null)
+    } catch (error) {
+      console.error(
+        "Error eliminando universidad:",
+        error,
+      )
+    }
+  }
+
+  /*
+   * =========================================================
+   * ESTADO DE CARGA
+   * =========================================================
+   */
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-sm text-muted-foreground">
+          Cargando universidades...
+        </p>
+      </div>
+    )
+  }
+
+  /*
+   * =========================================================
+   * ESTADO DE ERROR
+   * =========================================================
+   */
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20">
+
+        <Building2 className="size-10 text-muted-foreground" />
+
+        <p className="text-sm text-destructive">
+          No se pudieron cargar las universidades.
+        </p>
+
+        <p className="text-xs text-muted-foreground">
+          {error}
+        </p>
+
+        <Button
+          variant="outline"
+          onClick={reload}
+        >
+          Intentar nuevamente
+        </Button>
+
+      </div>
+    )
+  }
+
+  /*
+   * =========================================================
+   * RENDER PRINCIPAL
+   * =========================================================
+   */
+
   return (
     <div className="flex flex-col gap-6">
 
-      {/* HEADER */}
+      {/* =====================================================
+          HEADER
+          ===================================================== */}
 
       <div className="flex items-center justify-between">
+
         <PageHeader
           title="Universidades"
           description="Gestiona las instituciones registradas en el estudio."
@@ -124,9 +299,12 @@ export function UniversitiesView() {
           <Plus data-icon="inline-start" />
           Nueva universidad
         </Button>
+
       </div>
 
-      {/* FILTROS */}
+      {/* =====================================================
+          FILTROS
+          ===================================================== */}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
@@ -187,6 +365,7 @@ export function UniversitiesView() {
             </Button>
 
           </div>
+
         </div>
 
         {/* CAMBIO DE VISTA */}
@@ -194,14 +373,18 @@ export function UniversitiesView() {
         <ToggleGroup
           value={[view]}
           onValueChange={(value) => {
-            if (value[0]) {
-              setView(
-                value[0] as "grid" | "table",
-              )
+            const selectedView = value[0]
+
+            if (
+              selectedView === "grid" ||
+              selectedView === "table"
+            ) {
+              setView(selectedView)
             }
           }}
           className="self-start"
         >
+
           <ToggleGroupItem
             value="grid"
             aria-label="Vista de tarjetas"
@@ -215,13 +398,16 @@ export function UniversitiesView() {
           >
             <List />
           </ToggleGroupItem>
+
         </ToggleGroup>
 
       </div>
 
-      {/* CONTENIDO */}
+      {/* =====================================================
+          CONTENIDO
+          ===================================================== */}
 
-      {filtered.length === 0 ? (
+      {filteredUniversities.length === 0 ? (
 
         universities.length === 0 ? (
 
@@ -229,13 +415,13 @@ export function UniversitiesView() {
             icon={Building2}
             title="Aún no hay universidades"
             description="Crea tu primera universidad para empezar a organizar eventos y fotografías."
-            action={
-              <Button onClick={openCreate}>
-                <Plus data-icon="inline-start" />
-                Nueva universidad
-              </Button>
-            }
-          />
+          >
+            <Button onClick={openCreate}>
+              <Plus data-icon="inline-start" />
+              Nueva universidad
+            </Button>
+          </EmptyState>
+
         ) : (
 
           <EmptyState
@@ -248,13 +434,13 @@ export function UniversitiesView() {
 
       ) : view === "grid" ? (
 
-        /* ============================= */
-        /* VISTA GRID                    */
-        /* ============================= */
+        /* ===================================================
+           VISTA GRID
+           =================================================== */
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 
-          {filtered.map((university) => (
+          {filteredUniversities.map((university) => (
 
             <UniversityCard
               key={university.id}
@@ -278,9 +464,9 @@ export function UniversitiesView() {
 
       ) : (
 
-        /* ============================= */
-        /* VISTA TABLA                   */
-        /* ============================= */
+        /* ===================================================
+           VISTA TABLA
+           =================================================== */
 
         <Card className="overflow-hidden py-0">
 
@@ -318,103 +504,107 @@ export function UniversitiesView() {
 
             <TableBody>
 
-              {filtered.map((university) => (
+              {filteredUniversities.map(
+                (university) => (
 
-                <TableRow key={university.id}>
+                  <TableRow
+                    key={university.id}
+                  >
 
-                  <TableCell>
+                    <TableCell>
 
-                    <Link
-                      href={`/universidades/${university.id}`}
-                      className="flex items-center gap-3 font-medium hover:underline"
-                    >
+                      <Link
+                        href={`/universidades/${university.id}`}
+                        className="flex items-center gap-3 font-medium hover:underline"
+                      >
 
-                      <Avatar className="size-9 rounded-md">
+                        <Avatar className="size-9 rounded-md">
 
-                        <AvatarFallback className="rounded-md">
-                          {university.short_name}
-                        </AvatarFallback>
+                          <AvatarFallback className="rounded-md">
+                            {university.short_name}
+                          </AvatarFallback>
 
-                      </Avatar>
+                        </Avatar>
 
-                      {university.name}
+                        {university.name}
 
-                    </Link>
+                      </Link>
 
-                  </TableCell>
+                    </TableCell>
 
-                  <TableCell className="hidden text-muted-foreground md:table-cell">
+                    <TableCell className="hidden text-muted-foreground md:table-cell">
+                      {university.location || "—"}
+                    </TableCell>
 
-                    {university.location || "—"}
+                    <TableCell className="text-center tabular-nums">
+                      {eventCountByUni.get(
+                        university.id,
+                      ) ?? 0}
+                    </TableCell>
 
-                  </TableCell>
+                    <TableCell className="hidden text-muted-foreground sm:table-cell">
+                      {formatDate(
+                        university.created_at,
+                      )}
+                    </TableCell>
 
-                  <TableCell className="text-center tabular-nums">
+                    <TableCell>
 
-                    {eventCountByUni.get(
-                      university.id,
-                    ) ?? 0}
+                      <span
+                        className={
+                          university.active
+                            ? "text-xs font-medium text-green-600"
+                            : "text-xs font-medium text-muted-foreground"
+                        }
+                      >
+                        {university.active
+                          ? "Activo"
+                          : "Inactivo"}
+                      </span>
 
-                  </TableCell>
+                    </TableCell>
 
-                  <TableCell className="hidden text-muted-foreground sm:table-cell">
+                    <TableCell>
 
-                    {formatDate(
-                      university.created_at,
-                    )}
+                      <RowActions
+                        viewHref={`/universidades/${university.id}`}
+                        onEdit={() =>
+                          openEdit(university)
+                        }
+                        onDelete={() =>
+                          setDeleting(university)
+                        }
+                      />
 
-                  </TableCell>
+                    </TableCell>
 
-                  <TableCell>
+                  </TableRow>
 
-                    <span
-                      className={
-                        university.active
-                          ? "text-xs font-medium text-green-600"
-                          : "text-xs font-medium text-muted-foreground"
-                      }
-                    >
-                      {university.active
-                        ? "Activo"
-                        : "Inactivo"}
-                    </span>
-
-                  </TableCell>
-
-                  <TableCell>
-
-                    <RowActions
-                      viewHref={`/universidades/${university.id}`}
-                      onEdit={() =>
-                        openEdit(university)
-                      }
-                      onDelete={() =>
-                        setDeleting(university)
-                      }
-                    />
-
-                  </TableCell>
-
-                </TableRow>
-
-              ))}
+                ),
+              )}
 
             </TableBody>
 
           </Table>
 
         </Card>
+
       )}
 
-      {/* DIALOG */}
+      {/* =====================================================
+          DIALOG CREAR / EDITAR
+          ===================================================== */}
 
       <UniversityDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         university={editing ?? undefined}
+        onSubmit={handleUniversitySubmit}
       />
 
-      {/* CONFIRM DELETE */}
+      {/* =====================================================
+          CONFIRMAR ELIMINACIÓN
+          ===================================================== */}
 
       <ConfirmDialog
         open={!!deleting}
@@ -425,13 +615,7 @@ export function UniversitiesView() {
         }}
         title="Eliminar universidad"
         description={`¿Seguro que deseas eliminar "${deleting?.name}"? Se eliminarán también sus eventos, estudiantes y fotografías.`}
-        onConfirm={() => {
-          if (deleting) {
-            deleteUniversity(deleting.id)
-          }
-
-          setDeleting(null)
-        }}
+        onConfirm={handleDelete}
       />
 
     </div>
