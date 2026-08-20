@@ -1,7 +1,8 @@
 export type Status =
   | 'activo'
-  | 'archivado'
   | 'borrador'
+  | 'cerrado'
+  | 'archivado'
 
 export interface University {
   id: string

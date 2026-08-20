@@ -12,6 +12,7 @@ export interface CreateEventInput {
   name: string
   description: string
   date: string
+  password: string
   status: Status
 }
 
@@ -21,38 +22,65 @@ export interface UpdateEventInput {
   description?: string
   date?: string
   status?: Status
+  password?: string
 }
 
 /*
  * =========================================================
- * HELPERS
+ * STATUS
  * =========================================================
  */
 
-/**
- * Convierte el status de Supabase
- * al formato utilizado por React.
- */
 function mapStatus(status: string): Status {
   switch (status.toUpperCase()) {
     case 'ACTIVE':
       return 'activo'
 
-    case 'ARCHIVED':
-      return 'archivado'
-
     case 'DRAFT':
       return 'borrador'
+
+    case 'CLOSED':
+      return 'cerrado'
+
+    case 'ARCHIVED':
+      return 'archivado'
 
     default:
       return 'borrador'
   }
 }
 
-/**
- * Convierte un registro de Supabase
- * al modelo utilizado por el frontend.
+/*
+ * =========================================================
+ * STATUS FRONTEND -> DATABASE
+ * =========================================================
  */
+
+function dbStatus(status: Status): string {
+  switch (status) {
+    case 'activo':
+      return 'ACTIVE'
+
+    case 'borrador':
+      return 'DRAFT'
+
+    case 'cerrado':
+      return 'CLOSED'
+
+    case 'archivado':
+      return 'ARCHIVED'
+
+    default:
+      return 'DRAFT'
+  }
+}
+
+/*
+ * =========================================================
+ * MAPEAR EVENTO
+ * =========================================================
+ */
+
 function mapEvent(row: any): EventItem {
   return {
     id: row.id,
@@ -68,7 +96,7 @@ function mapEvent(row: any): EventItem {
 
 /*
  * =========================================================
- * OBTENER EVENTOS
+ * OBTENER TODOS
  * =========================================================
  */
 
@@ -96,7 +124,7 @@ export async function getEvents(): Promise<EventItem[]> {
 
 /*
  * =========================================================
- * OBTENER EVENTO
+ * OBTENER POR ID
  * =========================================================
  */
 
@@ -134,33 +162,17 @@ export async function getEvent(
  */
 
 export async function createEvent(
-  event: CreateEventInput,
+  input: CreateEventInput,
 ): Promise<EventItem> {
-  /*
-   * IMPORTANTE:
-   *
-   * La BD actualmente exige:
-   *
-   * cohort_password_hash NOT NULL
-   *
-   * Por eso todavía NO hacemos el insert definitivo
-   * hasta resolver el manejo de la contraseña.
-   */
-
   const { data, error } = await supabase
     .from('events')
     .insert({
-      institution_id: event.universityId,
-      name: event.name,
-      description: event.description,
-      event_date: event.date || null,
-
-      /*
-       * Pendiente:
-       * cohort_password_hash
-       */
-
-      status: event.status.toUpperCase(),
+      institution_id: input.universityId,
+      name: input.name,
+      description: input.description,
+      event_date: input.date,
+      password: input.password,
+      status: dbStatus(input.status),
     })
     .select()
     .single()
@@ -171,7 +183,10 @@ export async function createEvent(
       error,
     )
 
-    throw new Error(error.message)
+    throw new Error(
+      error.message ||
+        'No se pudo crear el evento',
+    )
   }
 
   return mapEvent(data)
@@ -179,42 +194,40 @@ export async function createEvent(
 
 /*
  * =========================================================
- * ACTUALIZAR EVENTO
+ * EDITAR EVENTO
  * =========================================================
  */
 
 export async function updateEvent(
   id: string,
-  event: UpdateEventInput,
+  input: UpdateEventInput,
 ): Promise<EventItem> {
   const payload: Record<string, unknown> = {}
 
-  if (event.universityId !== undefined) {
+  if (input.universityId !== undefined) {
     payload.institution_id =
-      event.universityId
+      input.universityId
   }
 
-  if (event.name !== undefined) {
-    payload.name = event.name
+  if (input.name !== undefined) {
+    payload.name = input.name
   }
 
-  if (event.description !== undefined) {
-    payload.description =
-      event.description
+  if (input.description !== undefined) {
+    payload.description = input.description
   }
 
-  if (event.date !== undefined) {
-    payload.event_date =
-      event.date || null
+  if (input.date !== undefined) {
+    payload.event_date = input.date
   }
 
-  if (event.status !== undefined) {
-    payload.status =
-      event.status.toUpperCase()
+  if (input.status !== undefined) {
+    payload.status = dbStatus(input.status)
   }
 
-  payload.updated_at =
-    new Date().toISOString()
+  if (input.password !== undefined) {
+    payload.password = input.password
+  }
 
   const { data, error } = await supabase
     .from('events')
@@ -229,7 +242,10 @@ export async function updateEvent(
       error,
     )
 
-    throw new Error(error.message)
+    throw new Error(
+      error.message ||
+        'No se pudo actualizar el evento',
+    )
   }
 
   return mapEvent(data)
@@ -255,6 +271,9 @@ export async function deleteEvent(
       error,
     )
 
-    throw new Error(error.message)
+    throw new Error(
+      error.message ||
+        'No se pudo eliminar el evento',
+    )
   }
 }

@@ -4,17 +4,9 @@ import * as React from 'react'
 
 import {
   getEvents,
-  createEvent,
-  updateEvent,
-  deleteEvent,
 } from '@/lib/services/events.service'
 
 import type { EventItem } from '@/lib/types'
-
-import type {
-  CreateEventInput,
-  UpdateEventInput,
-} from '@/lib/services/events.service'
 
 export function useEvents() {
   const [events, setEvents] =
@@ -42,14 +34,19 @@ export function useEvents() {
           await getEvents()
 
         setEvents(data)
+
       } catch (error) {
-        console.error(error)
+        console.error(
+          'Error cargando eventos:',
+          error,
+        )
 
         setError(
           error instanceof Error
             ? error.message
             : 'No se pudieron cargar los eventos',
         )
+
       } finally {
         setLoading(false)
       }
@@ -65,90 +62,10 @@ export function useEvents() {
     loadEvents()
   }, [loadEvents])
 
-  /*
-   * =========================================================
-   * CREAR
-   * =========================================================
-   */
-
-  const addEvent =
-    React.useCallback(
-      async (
-        event: CreateEventInput,
-      ) => {
-        const created =
-          await createEvent(event)
-
-        setEvents((prev) => [
-          created,
-          ...prev,
-        ])
-
-        return created
-      },
-      [],
-    )
-
-  /*
-   * =========================================================
-   * ACTUALIZAR
-   * =========================================================
-   */
-
-  const editEvent =
-    React.useCallback(
-      async (
-        id: string,
-        event: UpdateEventInput,
-      ) => {
-        const updated =
-          await updateEvent(
-            id,
-            event,
-          )
-
-        setEvents((prev) =>
-          prev.map((item) =>
-            item.id === id
-              ? updated
-              : item,
-          ),
-        )
-
-        return updated
-      },
-      [],
-    )
-
-  /*
-   * =========================================================
-   * ELIMINAR
-   * =========================================================
-   */
-
-  const removeEvent =
-    React.useCallback(
-      async (id: string) => {
-        await deleteEvent(id)
-
-        setEvents((prev) =>
-          prev.filter(
-            (item) => item.id !== id,
-          ),
-        )
-      },
-      [],
-    )
-
   return {
     events,
     loading,
     error,
-
-    addEvent,
-    editEvent,
-    removeEvent,
-
     reload: loadEvents,
   }
 }

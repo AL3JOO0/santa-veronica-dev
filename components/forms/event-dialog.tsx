@@ -1,9 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
 import { toast } from 'sonner'
-import { Check } from 'lucide-react'
 
 import {
   Dialog,
@@ -32,33 +30,30 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-import { useStore } from '@/lib/store'
+import { createEventAction } from '@/app/actions/events'
+
 import { useUniversities } from '@/hooks/use-universities'
+import { useEvents } from '@/hooks/use-events'
 
-import { cn } from '@/lib/utils'
 
-import type { EventItem, Status } from '@/lib/types'
-
-const COVERS = [
-  {
-    url: '/covers/graduacion.png',
-    label: 'Graduación',
-  },
-  {
-    url: '/covers/ceremonia.png',
-    label: 'Ceremonia',
-  },
-  {
-    url: '/covers/campus.png',
-    label: 'Campus',
-  },
-]
+import type {
+  EventItem,
+  Status,
+} from '@/lib/types'
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
-  event?: EventItem
+
+  event?: EventItem | null
+
   defaultUniversityId?: string
+
+  /*
+   * Se ejecuta después de crear o editar
+   * correctamente el evento.
+   */
+  onSaved?: () => void | Promise<void>
 }
 
 export function EventDialog({
@@ -66,26 +61,39 @@ export function EventDialog({
   onOpenChange,
   event,
   defaultUniversityId,
+  onSaved,
 }: Props) {
+
   /*
    * =========================================================
-   * DATA
+   * UNIVERSIDADES
    * =========================================================
-   *
-   * Universidades:
-   *     useUniversities()
-   *
-   * Eventos:
-   *     useStore() temporalmente
-   *
-   * Cuando migremos eventos al backend,
-   * también eliminaremos useStore() de aquí.
    */
 
-  const { universities, loading: universitiesLoading } =
-    useUniversities()
+  const {
+  universities,
+  loading: universitiesLoading,
+  reload: reloadUniversities,
+} = useUniversities()
+React.useEffect(() => {
+  if (!open) {
+    return
+  }
 
-  const store = useStore()
+  reloadUniversities()
+}, [open, reloadUniversities])
+
+  /*
+   * =========================================================
+   * EVENTOS
+   * =========================================================
+   *
+   * Utilizamos editEvent() para actualizar eventos.
+   */
+
+  const {
+    editEvent,
+  } = useEvents()
 
   /*
    * =========================================================
@@ -95,52 +103,95 @@ export function EventDialog({
 
   const editing = Boolean(event)
 
-  const [name, setName] = React.useState('')
+  const [name, setName] =
+    React.useState('')
+
   const [universityId, setUniversityId] =
     React.useState('')
 
-  const [date, setDate] = React.useState('')
+  const [date, setDate] =
+    React.useState('')
+
   const [description, setDescription] =
     React.useState('')
 
-  const [cover, setCover] =
-    React.useState(COVERS[0].url)
+  const [password, setPassword] =
+    React.useState('')
 
   const [status, setStatus] =
     React.useState<Status>('activo')
 
+  const [saving, setSaving] =
+    React.useState(false)
+
   /*
    * =========================================================
-   * CARGAR DATOS
+   * CARGAR DATOS DEL EVENTO
    * =========================================================
    */
 
   React.useEffect(() => {
-    if (!open) return
 
-    setName(event?.name ?? '')
+    if (!open) {
+      return
+    }
 
-    setUniversityId(
-      event?.universityId ??
-        defaultUniversityId ??
-        '',
-    )
+    /*
+     * Si estamos editando,
+     * cargamos los datos existentes.
+     */
 
-    setDate(event?.date ?? '')
+    if (event) {
 
-    setDescription(
-      event?.description ?? '',
-    )
+      setName(
+        event.name ?? '',
+      )
 
-    setCover(
-      event?.cover ??
-        COVERS[0].url,
-    )
+      setUniversityId(
+        event.universityId ?? '',
+      )
 
-    setStatus(
-      event?.status ??
-        'activo',
-    )
+      setDate(
+        event.date ?? '',
+      )
+
+      setDescription(
+        event.description ?? '',
+      )
+
+      setStatus(
+        event.status ?? 'activo',
+      )
+
+    }
+
+    /*
+     * Si estamos creando,
+     * utilizamos la universidad por defecto.
+     */
+
+    else {
+
+      setName('')
+
+      setUniversityId(
+        defaultUniversityId ?? '',
+      )
+
+      setDate('')
+
+      setDescription('')
+
+      setStatus('activo')
+
+    }
+
+    /*
+     * La contraseña nunca se carga.
+     */
+
+    setPassword('')
+
   }, [
     open,
     event,
@@ -153,73 +204,166 @@ export function EventDialog({
    * =========================================================
    */
 
-  const handleSubmit = (
+  const handleSubmit = async (
     e: React.FormEvent,
   ) => {
+
     e.preventDefault()
 
     /*
-     * Validaciones
+     * =======================================================
+     * VALIDACIONES
+     * =======================================================
      */
 
     if (!name.trim()) {
+
       toast.error(
-        'El nombre es obligatorio',
+        'El nombre del evento es obligatorio.',
       )
+
       return
     }
 
     if (!universityId) {
+
       toast.error(
-        'Selecciona una universidad',
+        'Selecciona una universidad.',
       )
+
       return
     }
 
     if (!date) {
+
       toast.error(
-        'La fecha es obligatoria',
+        'La fecha del evento es obligatoria.',
       )
+
       return
     }
 
     /*
-     * Payload
+     * La contraseña solamente es obligatoria
+     * cuando estamos creando.
      */
 
-    const payload = {
-      name: name.trim(),
-      universityId,
-      date,
-      description:
-        description.trim(),
-      cover,
-      status,
+    if (
+      !editing &&
+      !password.trim()
+    ) {
+
+      toast.error(
+        'La contraseña de cohorte es obligatoria.',
+      )
+
+      return
     }
 
-    /*
-     * Actualmente los eventos
-     * todavía usan el store.
-     */
+    try {
 
-    if (editing && event) {
-      store.updateEvent(
-        event.id,
-        payload,
+      setSaving(true)
+
+      /*
+       * =====================================================
+       * EDITAR EVENTO
+       * =====================================================
+       */
+
+      if (editing && event) {
+
+        await editEvent(
+          event.id,
+          {
+            universityId,
+            name: name.trim(),
+            description:
+              description.trim(),
+            date,
+            status,
+
+            /*
+             * Si está vacío, el servicio no
+             * cambia la contraseña.
+             */
+
+            password:
+              password.trim() ||
+              undefined,
+          },
+        )
+
+        toast.success(
+          'Evento actualizado correctamente.',
+        )
+      }
+
+      /*
+       * =====================================================
+       * CREAR EVENTO
+       * =====================================================
+       */
+
+      else {
+
+        await createEventAction({
+          name: name.trim(),
+
+          universityId,
+
+          date,
+
+          description:
+            description.trim(),
+
+          password:
+            password.trim(),
+
+          status,
+        })
+
+        toast.success(
+          'Evento creado correctamente.',
+        )
+      }
+
+      /*
+       * Limpiamos la contraseña.
+       */
+
+      setPassword('')
+
+      /*
+       * Cerramos el diálogo.
+       */
+
+      onOpenChange(false)
+
+      /*
+       * Avisamos al padre para que
+       * actualice la información.
+       */
+
+      await onSaved?.()
+
+    } catch (error) {
+
+      console.error(
+        'Error guardando evento:',
+        error,
       )
 
-      toast.success(
-        'Evento actualizado',
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo guardar el evento.',
       )
-    } else {
-      store.addEvent(payload)
 
-      toast.success(
-        'Evento creado',
-      )
+    } finally {
+
+      setSaving(false)
+
     }
-
-    onOpenChange(false)
   }
 
   /*
@@ -233,9 +377,16 @@ export function EventDialog({
       open={open}
       onOpenChange={onOpenChange}
     >
+
       <DialogContent className="sm:max-w-lg">
 
-        <form onSubmit={handleSubmit}>
+        <form
+          onSubmit={handleSubmit}
+        >
+
+          {/* =================================================
+              HEADER
+              ================================================= */}
 
           <DialogHeader>
 
@@ -255,7 +406,9 @@ export function EventDialog({
 
           <FieldGroup className="py-4">
 
-            {/* NOMBRE */}
+            {/* =================================================
+                NOMBRE
+                ================================================= */}
 
             <Field>
 
@@ -267,15 +420,20 @@ export function EventDialog({
                 id="ev-name"
                 value={name}
                 onChange={(e) =>
-                  setName(e.target.value)
+                  setName(
+                    e.target.value,
+                  )
                 }
                 placeholder="Graduación 2026"
                 autoFocus
+                disabled={saving}
               />
 
             </Field>
 
-            {/* UNIVERSIDAD + FECHA */}
+            {/* =================================================
+                UNIVERSIDAD + FECHA
+                ================================================= */}
 
             <div className="grid gap-4 sm:grid-cols-2">
 
@@ -291,7 +449,8 @@ export function EventDialog({
                     setUniversityId
                   }
                   disabled={
-                    universitiesLoading
+                    universitiesLoading ||
+                    saving
                   }
                 >
 
@@ -311,6 +470,7 @@ export function EventDialog({
 
                     {universities.map(
                       (university) => (
+
                         <SelectItem
                           key={
                             university.id
@@ -323,6 +483,7 @@ export function EventDialog({
                             university.name
                           }
                         </SelectItem>
+
                       ),
                     )}
 
@@ -347,13 +508,16 @@ export function EventDialog({
                       e.target.value,
                     )
                   }
+                  disabled={saving}
                 />
 
               </Field>
 
             </div>
 
-            {/* DESCRIPCIÓN */}
+            {/* =================================================
+                DESCRIPCIÓN
+                ================================================= */}
 
             <Field>
 
@@ -370,73 +534,52 @@ export function EventDialog({
                   )
                 }
                 placeholder="Detalles del evento"
-                rows={2}
+                rows={3}
+                disabled={saving}
               />
 
             </Field>
 
-            {/* PORTADA */}
+            {/* =================================================
+                CONTRASEÑA
+                ================================================= */}
 
             <Field>
 
-              <FieldLabel>
-                Imagen de portada
+              <FieldLabel htmlFor="ev-password">
+                Contraseña de cohorte
               </FieldLabel>
 
-              <div className="grid grid-cols-3 gap-2">
+              <Input
+                id="ev-password"
+                type="password"
+                value={password}
+                onChange={(e) =>
+                  setPassword(
+                    e.target.value,
+                  )
+                }
+                placeholder={
+                  editing
+                    ? 'Dejar vacío para conservar la actual'
+                    : 'Contraseña para acceder a la cohorte'
+                }
+                disabled={saving}
+              />
 
-                {COVERS.map((coverOption) => (
+              <p className="text-xs text-muted-foreground">
 
-                  <button
-                    key={
-                      coverOption.url
-                    }
-                    type="button"
-                    onClick={() =>
-                      setCover(
-                        coverOption.url,
-                      )
-                    }
-                    className={cn(
-                      'group relative aspect-video overflow-hidden rounded-lg ring-2 ring-transparent transition-all',
-                      cover ===
-                        coverOption.url &&
-                        'ring-primary',
-                    )}
-                    aria-label={`Portada ${coverOption.label}`}
-                  >
+                {editing
+                  ? 'Déjala vacía para conservar la contraseña actual.'
+                  : 'La contraseña se almacenará de forma segura mediante un hash.'}
 
-                    <Image
-                      src={
-                        coverOption.url ||
-                        '/placeholder.svg'
-                      }
-                      alt={
-                        coverOption.label
-                      }
-                      fill
-                      sizes="150px"
-                      className="object-cover"
-                    />
-
-                    {cover ===
-                      coverOption.url && (
-                      <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-
-                        <Check className="size-3" />
-
-                      </span>
-                    )}
-
-                  </button>
-
-                ))}
-
-              </div>
+              </p>
 
             </Field>
 
-            {/* ESTADO */}
+            {/* =================================================
+                ESTADO
+                ================================================= */}
 
             <Field>
 
@@ -451,10 +594,13 @@ export function EventDialog({
                     value as Status,
                   )
                 }
+                disabled={saving}
               >
 
                 <SelectTrigger className="w-full">
+
                   <SelectValue />
+
                 </SelectTrigger>
 
                 <SelectContent>
@@ -465,6 +611,10 @@ export function EventDialog({
 
                   <SelectItem value="borrador">
                     Borrador
+                  </SelectItem>
+
+                  <SelectItem value="cerrado">
+                    Cerrado
                   </SelectItem>
 
                   <SelectItem value="archivado">
@@ -479,7 +629,9 @@ export function EventDialog({
 
           </FieldGroup>
 
-          {/* BOTONES */}
+          {/* =================================================
+              FOOTER
+              ================================================= */}
 
           <DialogFooter>
 
@@ -489,14 +641,22 @@ export function EventDialog({
               onClick={() =>
                 onOpenChange(false)
               }
+              disabled={saving}
             >
               Cancelar
             </Button>
 
-            <Button type="submit">
-              {editing
-                ? 'Guardar cambios'
-                : 'Crear evento'}
+            <Button
+              type="submit"
+              disabled={saving}
+            >
+
+              {saving
+                ? 'Guardando...'
+                : editing
+                  ? 'Guardar cambios'
+                  : 'Crear evento'}
+
             </Button>
 
           </DialogFooter>
@@ -504,6 +664,7 @@ export function EventDialog({
         </form>
 
       </DialogContent>
+
     </Dialog>
   )
 }

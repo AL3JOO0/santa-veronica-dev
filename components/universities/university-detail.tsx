@@ -1,6 +1,11 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import {
+  useMemo,
+  useState,
+  type ElementType,
+} from "react"
+
 import {
   CalendarDays,
   ImageIcon,
@@ -10,8 +15,11 @@ import {
   Users,
 } from "lucide-react"
 
+import { toast } from "sonner"
+
 import { useStore } from "@/lib/store"
 import { useUniversities } from "@/hooks/use-universities"
+import { useEvents } from "@/hooks/use-events"
 
 import { PageHeader } from "@/components/shared/page-header"
 import { SearchInput } from "@/components/shared/search-input"
@@ -20,7 +28,6 @@ import { EventCard } from "@/components/events/event-card"
 import { EventDialog } from "@/components/forms/event-dialog"
 import { UniversityDialog } from "@/components/forms/university-dialog"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { StatusBadge } from "@/components/shared/status-badge"
 import { NotFoundState } from "@/components/shared/not-found-state"
 
 import { Button } from "@/components/ui/button"
@@ -32,7 +39,7 @@ import {
   AvatarImage,
 } from "@/components/ui/avatar"
 
-import type { Event } from "@/lib/types"
+import type { EventItem } from "@/lib/types"
 import type { CreateUniversityInput } from "@/lib/services/universities.service"
 
 interface Props {
@@ -40,36 +47,52 @@ interface Props {
 }
 
 export function UniversityDetail({ id }: Props) {
+
+  /*
+   * =========================================================
+   * STORE
+   * =========================================================
+   *
+   * Por ahora estudiantes y fotografías continúan
+   * utilizando el store.
+   */
+
+  const store = useStore()
+
+  const {
+    students,
+    photos,
+  } = store
+
   /*
    * =========================================================
    * UNIVERSIDADES
    * =========================================================
-   *
-   * El CRUD de universidades pasa por useUniversities().
    */
+
   const {
     universities,
     loading: universitiesLoading,
     error: universitiesError,
     editUniversity,
-    reload,
+    reload: reloadUniversities,
   } = useUniversities()
 
   /*
    * =========================================================
-   * EVENTOS / ESTUDIANTES / FOTOS
+   * EVENTOS
    * =========================================================
    *
-   * Estos todavía permanecen en el store.
-   *
-   * Posteriormente podremos migrarlos a sus respectivos hooks.
+   * Los eventos vienen directamente de Supabase
+   * mediante useEvents().
    */
+
   const {
-    events,
-    students,
-    photos,
-    deleteEvent,
-  } = useStore()
+  events,
+  loading: eventsLoading,
+  error: eventsError,
+  reload: reloadEvents,
+} = useEvents()
 
   /*
    * =========================================================
@@ -96,10 +119,10 @@ export function UniversityDetail({ id }: Props) {
     useState(false)
 
   const [editingEvent, setEditingEvent] =
-    useState<Event | null>(null)
+    useState<EventItem | undefined>(undefined)
 
   const [deletingEvent, setDeletingEvent] =
-    useState<Event | null>(null)
+    useState<EventItem | null>(null)
 
   /*
    * =========================================================
@@ -109,7 +132,8 @@ export function UniversityDetail({ id }: Props) {
 
   const universityEvents = useMemo(() => {
     return events.filter(
-      (event) => event.universityId === id,
+      (event) =>
+        event.universityId === id,
     )
   }, [events, id])
 
@@ -120,20 +144,25 @@ export function UniversityDetail({ id }: Props) {
    */
 
   const filteredEvents = useMemo(() => {
-    const normalizedQuery = query
-      .trim()
-      .toLowerCase()
+
+    const normalizedQuery =
+      query.trim().toLowerCase()
 
     if (!normalizedQuery) {
       return universityEvents
     }
 
-    return universityEvents.filter((event) =>
-      event.name
-        .toLowerCase()
-        .includes(normalizedQuery),
+    return universityEvents.filter(
+      (event) =>
+        event.name
+          .toLowerCase()
+          .includes(normalizedQuery),
     )
-  }, [universityEvents, query])
+
+  }, [
+    universityEvents,
+    query,
+  ])
 
   /*
    * =========================================================
@@ -142,34 +171,64 @@ export function UniversityDetail({ id }: Props) {
    */
 
   const totalStudents = useMemo(() => {
+
     const eventIds = new Set(
       universityEvents.map(
         (event) => event.id,
       ),
     )
 
-    return students.filter((student) =>
-      eventIds.has(student.eventId),
+    return students.filter(
+      (student) =>
+        eventIds.has(student.eventId),
     ).length
-  }, [students, universityEvents])
+
+  }, [
+    students,
+    universityEvents,
+  ])
 
   /*
    * =========================================================
    * TOTAL FOTOS
    * =========================================================
+   *
+   * Las fotos se relacionan actualmente mediante
+   * los estudiantes.
    */
 
   const totalPhotos = useMemo(() => {
+
     const eventIds = new Set(
       universityEvents.map(
         (event) => event.id,
       ),
     )
 
-    return photos.filter((photo) =>
-      eventIds.has(photo.eventId),
+    const studentIds = new Set(
+      students
+        .filter((student) =>
+          eventIds.has(
+            student.eventId,
+          ),
+        )
+        .map(
+          (student) => student.id,
+        ),
+    )
+
+    return photos.filter(
+      (photo) =>
+        studentIds.has(
+          photo.studentId,
+        ),
     ).length
-  }, [photos, universityEvents])
+
+  }, [
+    photos,
+    students,
+    universityEvents,
+  ])
 
   /*
    * =========================================================
@@ -178,7 +237,9 @@ export function UniversityDetail({ id }: Props) {
    */
 
   function openCreateEvent() {
-    setEditingEvent(null)
+
+    setEditingEvent(undefined)
+
     setEventDialogOpen(true)
   }
 
@@ -188,8 +249,12 @@ export function UniversityDetail({ id }: Props) {
    * =========================================================
    */
 
-  function openEditEvent(event: Event) {
+  function openEditEvent(
+    event: EventItem,
+  ) {
+
     setEditingEvent(event)
+
     setEventDialogOpen(true)
   }
 
@@ -200,6 +265,7 @@ export function UniversityDetail({ id }: Props) {
    */
 
   function openEditUniversity() {
+
     setUniDialogOpen(true)
   }
 
@@ -207,40 +273,44 @@ export function UniversityDetail({ id }: Props) {
    * =========================================================
    * GUARDAR UNIVERSIDAD
    * =========================================================
-   *
-   * UniversityDialog
-   *        ↓
-   * handleUniversitySubmit
-   *        ↓
-   * editUniversity
-   *        ↓
-   * service
-   *        ↓
-   * Supabase
    */
 
   async function handleUniversitySubmit(
     data: CreateUniversityInput,
   ) {
+
     if (!university) {
       return
     }
 
-    await editUniversity(
-      university.id,
-      data,
-    )
+    try {
 
-    /*
-     * No es estrictamente necesario si el hook
-     * actualiza su estado local.
-     *
-     * Lo dejamos para garantizar que la vista
-     * quede sincronizada.
-     */
-    await reload()
+      await editUniversity(
+        university.id,
+        data,
+      )
 
-    setUniDialogOpen(false)
+      await reloadUniversities()
+
+      toast.success(
+        "Universidad actualizada correctamente.",
+      )
+
+      setUniDialogOpen(false)
+
+    } catch (error) {
+
+      console.error(
+        "Error actualizando universidad:",
+        error,
+      )
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo actualizar la universidad.",
+      )
+    }
   }
 
   /*
@@ -250,20 +320,34 @@ export function UniversityDetail({ id }: Props) {
    */
 
   async function handleDeleteEvent() {
+
     if (!deletingEvent) {
       return
     }
 
     try {
-      await deleteEvent(
+
+      await removeEvent(
         deletingEvent.id,
       )
 
+      toast.success(
+        "Evento eliminado correctamente.",
+      )
+
       setDeletingEvent(null)
+
     } catch (error) {
+
       console.error(
         "Error eliminando evento:",
         error,
+      )
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo eliminar el evento.",
       )
     }
   }
@@ -274,25 +358,33 @@ export function UniversityDetail({ id }: Props) {
    * =========================================================
    */
 
-  if (universitiesLoading) {
+  if (
+    universitiesLoading ||
+    eventsLoading
+  ) {
+
     return (
       <div className="flex items-center justify-center py-20">
+
         <p className="text-sm text-muted-foreground">
           Cargando universidad...
         </p>
+
       </div>
     )
   }
 
   /*
    * =========================================================
-   * ERROR
+   * ERROR UNIVERSIDADES
    * =========================================================
    */
 
   if (universitiesError) {
+
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-20">
+
         <p className="text-sm text-destructive">
           No se pudo cargar la universidad.
         </p>
@@ -303,10 +395,41 @@ export function UniversityDetail({ id }: Props) {
 
         <Button
           variant="outline"
-          onClick={reload}
+          onClick={reloadUniversities}
         >
           Intentar nuevamente
         </Button>
+
+      </div>
+    )
+  }
+
+  /*
+   * =========================================================
+   * ERROR EVENTOS
+   * =========================================================
+   */
+
+  if (eventsError) {
+
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20">
+
+        <p className="text-sm text-destructive">
+          No se pudieron cargar los eventos.
+        </p>
+
+        <p className="text-xs text-muted-foreground">
+          {eventsError}
+        </p>
+
+        <Button
+          variant="outline"
+          onClick={reloadEvents}
+        >
+          Intentar nuevamente
+        </Button>
+
       </div>
     )
   }
@@ -318,6 +441,7 @@ export function UniversityDetail({ id }: Props) {
    */
 
   if (!university) {
+
     return (
       <NotFoundState
         label="universidad"
@@ -401,20 +525,21 @@ export function UniversityDetail({ id }: Props) {
               </h2>
 
               <span
-  className={
-    university.active
-      ? "text-xs font-medium text-green-600"
-      : "text-xs font-medium text-muted-foreground"
-  }
->
-  {university.active
-    ? "Activa"
-    : "Inactiva"}
-</span>
+                className={
+                  university.active
+                    ? "text-xs font-medium text-green-600"
+                    : "text-xs font-medium text-muted-foreground"
+                }
+              >
+                {university.active
+                  ? "Activa"
+                  : "Inactiva"}
+              </span>
 
             </div>
 
             {university.location ? (
+
               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
 
                 <MapPin className="size-4" />
@@ -422,6 +547,7 @@ export function UniversityDetail({ id }: Props) {
                 {university.location}
 
               </span>
+
             ) : null}
 
           </div>
@@ -482,12 +608,14 @@ export function UniversityDetail({ id }: Props) {
               title="Esta universidad no tiene eventos"
               description="Crea el primer evento para comenzar a registrar estudiantes y fotografías."
             >
+
               <Button
                 onClick={openCreateEvent}
               >
                 <Plus data-icon="inline-start" />
                 Nuevo evento
               </Button>
+
             </EmptyState>
 
           ) : (
@@ -504,34 +632,54 @@ export function UniversityDetail({ id }: Props) {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
-            {filteredEvents.map((event) => (
+            {filteredEvents.map(
+              (event) => {
 
-              <EventCard
-                key={event.id}
-                event={event}
-                studentCount={
+                const eventStudents =
                   students.filter(
                     (student) =>
                       student.eventId ===
                       event.id,
-                  ).length
-                }
-                photoCount={
+                  )
+
+                const studentIds =
+                  new Set(
+                    eventStudents.map(
+                      (student) =>
+                        student.id,
+                    ),
+                  )
+
+                const eventPhotos =
                   photos.filter(
                     (photo) =>
-                      photo.eventId ===
-                      event.id,
-                  ).length
-                }
-                onEdit={() =>
-                  openEditEvent(event)
-                }
-                onDelete={() =>
-                  setDeletingEvent(event)
-                }
-              />
+                      studentIds.has(
+                        photo.studentId,
+                      ),
+                  )
 
-            ))}
+                return (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    studentCount={
+                      eventStudents.length
+                    }
+                    photoCount={
+                      eventPhotos.length
+                    }
+                    onEdit={() =>
+                      openEditEvent(event)
+                    }
+                    onDelete={() =>
+                      setDeletingEvent(
+                        event,
+                      )
+                    }
+                  />
+                )
+              },
+            )}
 
           </div>
 
@@ -545,9 +693,13 @@ export function UniversityDetail({ id }: Props) {
 
       <UniversityDialog
         open={uniDialogOpen}
-        onOpenChange={setUniDialogOpen}
+        onOpenChange={
+          setUniDialogOpen
+        }
         university={university}
-        onSubmit={handleUniversitySubmit}
+        onSubmit={
+          handleUniversitySubmit
+        }
       />
 
       {/* =====================================================
@@ -556,9 +708,31 @@ export function UniversityDetail({ id }: Props) {
 
       <EventDialog
         open={eventDialogOpen}
-        onOpenChange={setEventDialogOpen}
+        onOpenChange={
+          (open) => {
+
+            setEventDialogOpen(open)
+
+            /*
+             * Cuando se cierra el diálogo,
+             * limpiamos el evento en edición.
+             */
+
+            if (!open) {
+              setEditingEvent(
+                undefined,
+              )
+            }
+          }
+        }
         event={editingEvent}
-        defaultUniversityId={university.id}
+        defaultUniversityId={
+          university.id
+        }
+        onSaved={async () => {
+          await reloadEvents()
+        }}
+        
       />
 
       {/* =====================================================
@@ -566,15 +740,27 @@ export function UniversityDetail({ id }: Props) {
           ===================================================== */}
 
       <ConfirmDialog
-        open={!!deletingEvent}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDeletingEvent(null)
+        open={
+          !!deletingEvent
+        }
+        onOpenChange={
+          (open) => {
+
+            if (!open) {
+              setDeletingEvent(
+                null,
+              )
+            }
+
           }
-        }}
+        }
         title="Eliminar evento"
-        description={`¿Seguro que deseas eliminar "${deletingEvent?.name}"? Se eliminarán sus estudiantes y fotografías.`}
-        onConfirm={handleDeleteEvent}
+        description={
+          `¿Seguro que deseas eliminar "${deletingEvent?.name}"? Se eliminarán sus estudiantes y fotografías.`
+        }
+        onConfirm={
+          handleDeleteEvent
+        }
       />
 
     </div>
@@ -592,10 +778,11 @@ function Metric({
   value,
   label,
 }: {
-  icon: React.ElementType
+  icon: ElementType
   value: number
   label: string
 }) {
+
   return (
     <div className="flex flex-col items-center gap-1 text-center md:items-start md:text-left">
 
