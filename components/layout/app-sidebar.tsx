@@ -1,8 +1,9 @@
 'use client'
 
+import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
   GraduationCap,
@@ -25,6 +26,11 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  getSession,
+  logout,
+  type AppSession,
+} from '@/lib/services/auth.service'
 
 const mainNav = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -38,11 +44,47 @@ const secondaryNav = [
   { title: 'Configuración', href: '/configuracion', icon: Settings },
 ]
 
+function getInitials(name?: string) {
+  if (!name) return 'SV'
+
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'SV'
+}
+
+function getRoleLabel(role?: string) {
+  switch (role) {
+    case 'SUPER_ADMIN':
+      return 'Administradora'
+    case 'PRODUCTION':
+      return 'Producción'
+    case 'PHOTOGRAPHER':
+      return 'Fotógrafo'
+    default:
+      return 'Usuario'
+  }
+}
+
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const [session, setSession] = React.useState<AppSession | null>(null)
+
+  React.useEffect(() => {
+    getSession().then(setSession).catch(() => setSession(null))
+  }, [])
 
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href)
+
+  async function handleLogout() {
+    await logout()
+    router.replace('/login')
+    router.refresh()
+  }
 
   return (
     <Sidebar>
@@ -107,23 +149,28 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t p-3">
-        <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleLogout}
+          title="Cerrar sesión"
+          className="flex w-full items-center gap-3 text-left"
+        >
           <Avatar className="size-9">
             <AvatarFallback className="bg-muted text-xs font-medium">
-              AM
+              {getInitials(session?.displayName)}
             </AvatarFallback>
           </Avatar>
 
           <div className="flex min-w-0 flex-col leading-tight">
             <span className="truncate text-sm font-medium">
-              Ana Morales
+              {session?.displayName || 'Santa Verónica'}
             </span>
 
             <span className="truncate text-xs text-muted-foreground">
-              Administradora
+              {getRoleLabel(session?.role)}
             </span>
           </div>
-        </div>
+        </button>
       </SidebarFooter>
     </Sidebar>
   )
