@@ -92,6 +92,7 @@ export function UniversityDetail({ id }: Props) {
   loading: eventsLoading,
   error: eventsError,
   reload: reloadEvents,
+  removeEvent,
 } = useEvents()
 
   /*
