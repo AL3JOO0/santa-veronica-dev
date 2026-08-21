@@ -49,6 +49,7 @@ import type { University } from "@/lib/types"
 import type {
   CreateUniversityInput,
 } from "@/lib/services/universities.service"
+import { useEvents } from "@/hooks/use-events"
 
 type ActiveFilter = "all" | "active" | "inactive"
 type ViewMode = "grid" | "table"
@@ -78,7 +79,11 @@ export function UniversitiesView() {
    * Temporalmente los eventos siguen en el store.
    */
 
-  const { events } = useStore()
+  const {
+  events,
+  loading: eventsLoading,
+  error: eventsError,
+} = useEvents()
 
   /*
    * =========================================================

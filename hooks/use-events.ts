@@ -4,15 +4,15 @@ import * as React from 'react'
 
 import {
   getEvents,
-  createEvent,
   updateEvent,
   deleteEvent,
 } from '@/lib/services/events.service'
 
-import type { EventItem } from '@/lib/types'
+import type {
+  EventItem,
+} from '@/lib/types'
 
 import type {
-  CreateEventInput,
   UpdateEventInput,
 } from '@/lib/services/events.service'
 
@@ -43,7 +43,10 @@ export function useEvents() {
 
         setEvents(data)
       } catch (error) {
-        console.error(error)
+        console.error(
+          'Error cargando eventos:',
+          error,
+        )
 
         setError(
           error instanceof Error
@@ -57,6 +60,82 @@ export function useEvents() {
 
   /*
    * =========================================================
+   * EDITAR EVENTO
+   * =========================================================
+   */
+
+  const editEvent =
+    React.useCallback(
+      async (
+        id: string,
+        input: UpdateEventInput,
+      ) => {
+        try {
+          setError(null)
+
+          const updatedEvent =
+            await updateEvent(id, input)
+
+          setEvents((currentEvents) =>
+            currentEvents.map((event) =>
+              event.id === id
+                ? updatedEvent
+                : event,
+            ),
+          )
+
+          return updatedEvent
+        } catch (error) {
+          console.error(
+            'Error editando evento:',
+            error,
+          )
+
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'No se pudo editar el evento'
+
+          setError(message)
+
+          throw error
+        }
+      },
+      [],
+    )
+      const removeEvent =
+  React.useCallback(
+    async (id: string) => {
+      try {
+        setError(null)
+
+        await deleteEvent(id)
+
+        setEvents((currentEvents) =>
+          currentEvents.filter(
+            (event) => event.id !== id,
+          ),
+        )
+      } catch (error) {
+        console.error(
+          'Error eliminando evento:',
+          error,
+        )
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'No se pudo eliminar el evento'
+
+        setError(message)
+
+        throw error
+      }
+    },
+    [],
+  )
+  /*
+   * =========================================================
    * CARGA INICIAL
    * =========================================================
    */
@@ -65,90 +144,12 @@ export function useEvents() {
     loadEvents()
   }, [loadEvents])
 
-  /*
-   * =========================================================
-   * CREAR
-   * =========================================================
-   */
-
-  const addEvent =
-    React.useCallback(
-      async (
-        event: CreateEventInput,
-      ) => {
-        const created =
-          await createEvent(event)
-
-        setEvents((prev) => [
-          created,
-          ...prev,
-        ])
-
-        return created
-      },
-      [],
-    )
-
-  /*
-   * =========================================================
-   * ACTUALIZAR
-   * =========================================================
-   */
-
-  const editEvent =
-    React.useCallback(
-      async (
-        id: string,
-        event: UpdateEventInput,
-      ) => {
-        const updated =
-          await updateEvent(
-            id,
-            event,
-          )
-
-        setEvents((prev) =>
-          prev.map((item) =>
-            item.id === id
-              ? updated
-              : item,
-          ),
-        )
-
-        return updated
-      },
-      [],
-    )
-
-  /*
-   * =========================================================
-   * ELIMINAR
-   * =========================================================
-   */
-
-  const removeEvent =
-    React.useCallback(
-      async (id: string) => {
-        await deleteEvent(id)
-
-        setEvents((prev) =>
-          prev.filter(
-            (item) => item.id !== id,
-          ),
-        )
-      },
-      [],
-    )
-
   return {
     events,
     loading,
     error,
-
-    addEvent,
+    reload: loadEvents,
     editEvent,
     removeEvent,
-
-    reload: loadEvents,
   }
 }
