@@ -37,12 +37,13 @@ export default function DashboardPage() {
   const [uniOpen, setUniOpen] = React.useState(false)
   const [eventOpen, setEventOpen] = React.useState(false)
 
-  const recentEvents = [...store.events]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const recentEvents = [...(store.events || [])]
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
     .slice(0, 4)
-  const recentUniversities = [...store.universities]
-  .sort((a, b) => b.created_at.localeCompare(a.created_at))
-  .slice(0, 4)
+
+  const recentUniversities = [...(store.universities || [])]
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    .slice(0, 4)
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -63,32 +64,32 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Universidades"
-          value={store.universities.length}
+          value={store.universities?.length || 0}
           hint="registradas"
           icon={GraduationCap}
         />
         <StatCard
           label="Eventos"
-          value={store.events.length}
+          value={store.events?.length || 0}
           hint="en total"
           icon={CalendarDays}
         />
         <StatCard
           label="Estudiantes"
-          value={store.students.length}
+          value={store.students?.length || 0}
           hint="asociados"
           icon={Users}
         />
         <StatCard
           label="Fotografías"
-          value={store.photos.length}
+          value={store.photos?.length || 0}
           hint="cargadas"
           icon={Images}
         />
       </div>
 
       <div className="mt-6">
-    <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
               <CardTitle>Eventos recientes</CardTitle>
@@ -97,11 +98,11 @@ export default function DashboardPage() {
               </CardDescription>
               <CardAction>
                 <Button
-                    variant="ghost"
-                    size="sm"
-                    nativeButton={false}
-                    render={<Link href="/eventos" />}
-                  >
+                  variant="ghost"
+                  size="sm"
+                  nativeButton={false}
+                  render={<Link href="/eventos" />}
+                >
                   Ver todos
                   <ArrowRight data-icon="inline-end" />
                 </Button>
@@ -109,8 +110,8 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
               {recentEvents.map((ev) => {
-                const uni = store.getUniversity(ev.universityId)
-                const count = store.studentsByEvent(ev.id).length
+                const uni = store.getUniversity?.(ev.universityId)
+                const count = store.studentsByEvent?.(ev.id)?.length || 0
                 return (
                   <Link
                     key={ev.id}
@@ -151,11 +152,11 @@ export default function DashboardPage() {
               </CardDescription>
               <CardAction>
                 <Button
-                    variant="ghost"
-                    size="sm"
-                    nativeButton={false}
-                    render={<Link href="/universidades" />}
-                  >
+                  variant="ghost"
+                  size="sm"
+                  nativeButton={false}
+                  render={<Link href="/universidades" />}
+                >
                   Ver todas
                   <ArrowRight data-icon="inline-end" />
                 </Button>
@@ -163,7 +164,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="flex flex-col divide-y">
               {recentUniversities.map((u) => {
-                const count = store.eventsByUniversity(u.id).length
+                const count = store.eventsByUniversity?.(u.id)?.length || 0
                 return (
                   <Link
                     key={u.id}
@@ -193,8 +194,6 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
-
-
       </div>
 
       <UniversityDialog open={uniOpen} onOpenChange={setUniOpen} />
