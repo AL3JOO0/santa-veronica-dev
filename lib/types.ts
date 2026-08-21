@@ -3,6 +3,10 @@ export type Status =
   | 'borrador'
   | 'cerrado'
   | 'archivado'
+  export type StudentStatus =
+  | 'PENDING'
+  | 'SELECTION_IN_PROGRESS'
+  | 'SELECTION_SENT'
 
 export interface University {
   id: string
@@ -29,13 +33,14 @@ export interface EventItem {
 export interface Student {
   id: string
   eventId: string
+  documentNumber: string
   firstName: string
   lastName: string
-  code: string
-  program: string
-  email: string
-  status: Status
+  email: string | null
+  status: StudentStatus
   createdAt: string
+  updatedAt: string
+  authUserId: string | null
 }
 
 export interface Photo {

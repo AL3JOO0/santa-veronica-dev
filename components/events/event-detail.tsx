@@ -1,11 +1,8 @@
 "use client"
 
-import {
-  useMemo,
-  useState,
-} from "react"
-
+import { useMemo, useState } from "react"
 import Link from "next/link"
+import { useStudents } from "@/hooks/use-students"
 
 import {
   ArrowLeft,
@@ -13,11 +10,11 @@ import {
   ImageIcon,
   MapPin,
   Pencil,
+  Plus,
   Users,
 } from "lucide-react"
 
 import { toast } from "sonner"
-
 import { useStore } from "@/lib/store"
 import { useUniversities } from "@/hooks/use-universities"
 import { useEvents } from "@/hooks/use-events"
@@ -26,39 +23,24 @@ import { PageHeader } from "@/components/shared/page-header"
 import { NotFoundState } from "@/components/shared/not-found-state"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { EventDialog } from "@/components/forms/event-dialog"
-
+import { StudentDialog } from "@/components/forms/student-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
-import type { EventItem } from "@/lib/types"
+import type { EventItem, Student } from "@/lib/types"
 
 interface Props {
   id: string
 }
 
 export function EventDetail({ id }: Props) {
-
   /*
    * =========================================================
-   * STORE
+   * STORE & HOOKS
    * =========================================================
-   *
-   * Estudiantes y fotografías continúan
-   * utilizando el store.
    */
-
   const store = useStore()
-
-  const {
-    students,
-    photos,
-  } = store
-
-  /*
-   * =========================================================
-   * UNIVERSIDADES
-   * =========================================================
-   */
+  const { photos } = store
 
   const {
     universities,
@@ -66,12 +48,6 @@ export function EventDetail({ id }: Props) {
     error: universitiesError,
     reload: reloadUniversities,
   } = useUniversities()
-
-  /*
-   * =========================================================
-   * EVENTOS
-   * =========================================================
-   */
 
   const {
     events,
@@ -81,559 +57,406 @@ export function EventDetail({ id }: Props) {
     removeEvent,
   } = useEvents()
 
+  const {
+    students,
+    loading: studentsLoading,
+    error: studentsError,
+    addStudent,
+    editStudent,
+    removeStudent,
+    reload: reloadStudents,
+  } = useStudents(id)
+
   /*
    * =========================================================
-   * EVENTO ACTUAL
+   * DATA DERIVADA
    * =========================================================
    */
-
-  const event = events.find(
-    (item) => item.id === id,
-  )
-
-  /*
-   * =========================================================
-   * UNIVERSIDAD DEL EVENTO
-   * =========================================================
-   */
+  const event = events.find((item) => item.id === id)
 
   const university = useMemo(() => {
+    if (!event) return undefined
+    return universities.find((item) => item.id === event.universityId)
+  }, [universities, event])
 
-    if (!event) {
-      return undefined
-    }
-
-    return universities.find(
-      (item) =>
-        item.id === event.universityId,
-    )
-
-  }, [
-    universities,
-    event,
-  ])
-
-  /*
-   * =========================================================
-   * ESTUDIANTES DEL EVENTO
-   * =========================================================
-   */
-
-  const eventStudents = useMemo(() => {
-
-    return students.filter(
-      (student) =>
-        student.eventId === id,
-    )
-
-  }, [
-    students,
-    id,
-  ])
-
-  /*
-   * =========================================================
-   * FOTOGRAFÍAS DEL EVENTO
-   * =========================================================
-   *
-   * Las fotografías se relacionan con los estudiantes.
-   */
+  const eventStudents = students
 
   const eventPhotos = useMemo(() => {
-
-    const studentIds = new Set(
-      eventStudents.map(
-        (student) => student.id,
-      ),
-    )
-
-    return photos.filter(
-      (photo) =>
-        studentIds.has(
-          photo.studentId,
-        ),
-    )
-
-  }, [
-    photos,
-    eventStudents,
-  ])
+    const studentIds = new Set(eventStudents.map((student) => student.id))
+    return photos.filter((photo) => studentIds.has(photo.studentId))
+  }, [photos, eventStudents])
 
   /*
    * =========================================================
    * ESTADO DE UI
    * =========================================================
    */
-
-  const [
-    eventDialogOpen,
-    setEventDialogOpen,
-  ] = useState(false)
-
-  const [
-    deletingEvent,
-    setDeletingEvent,
-  ] = useState<EventItem | null>(null)
+  const [eventDialogOpen, setEventDialogOpen] = useState(false)
+  const [studentDialogOpen, setStudentDialogOpen] = useState(false)
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null)
+  const [deletingEvent, setDeletingEvent] = useState<EventItem | null>(null)
 
   /*
    * =========================================================
-   * EDITAR EVENTO
+   * ACCIONES
    * =========================================================
    */
-
   function openEditEvent() {
-
     setEventDialogOpen(true)
-
   }
 
-  /*
-   * =========================================================
-   * ELIMINAR EVENTO
-   * =========================================================
-   */
+  function openCreateStudent() {
+    setEditingStudent(null)
+    setStudentDialogOpen(true)
+  }
+
+  function openEditStudent(student: Student) {
+    setEditingStudent(student)
+    setStudentDialogOpen(true)
+  }
 
   async function handleDeleteEvent() {
-
-    if (!deletingEvent) {
-      return
-    }
+    if (!deletingEvent) return
 
     try {
-
-      await removeEvent(
-        deletingEvent.id,
-      )
-
-      toast.success(
-        "Evento eliminado correctamente.",
-      )
-
+      await removeEvent(deletingEvent.id)
+      toast.success("Evento eliminado correctamente.")
       setDeletingEvent(null)
-
-      /*
-       * Actualizamos la lista de eventos
-       * después de eliminar.
-       */
-
       await reloadEvents()
-
     } catch (error) {
-
-      console.error(
-        "Error eliminando evento:",
-        error,
-      )
-
+      console.error("Error eliminando evento:", error)
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "No se pudo eliminar el evento.",
+        error instanceof Error ? error.message : "No se pudo eliminar el evento."
       )
-
     }
-
   }
 
   /*
    * =========================================================
-   * LOADING
+   * CARGA Y ERRORES
    * =========================================================
    */
-
-  if (
-    universitiesLoading ||
-    eventsLoading
-  ) {
-
+  if (universitiesLoading || eventsLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground animate-pulse">
           Cargando evento...
         </p>
-
       </div>
     )
-
   }
 
-  /*
-   * =========================================================
-   * ERROR UNIVERSIDADES
-   * =========================================================
-   */
-
-  if (universitiesError) {
-
+  if (universitiesError || eventsError) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-20">
-
-        <p className="text-sm text-destructive">
-          No se pudo cargar la universidad.
+        <p className="text-sm font-medium text-destructive">
+          Ocurrió un error al cargar la información.
         </p>
-
         <p className="text-xs text-muted-foreground">
-          {universitiesError}
+          {universitiesError || eventsError}
         </p>
-
         <Button
           variant="outline"
-          onClick={reloadUniversities}
+          onClick={() => {
+            reloadUniversities()
+            reloadEvents()
+          }}
         >
           Intentar nuevamente
         </Button>
-
       </div>
     )
-
   }
-
-  /*
-   * =========================================================
-   * ERROR EVENTOS
-   * =========================================================
-   */
-
-  if (eventsError) {
-
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-20">
-
-        <p className="text-sm text-destructive">
-          No se pudieron cargar los eventos.
-        </p>
-
-        <p className="text-xs text-muted-foreground">
-          {eventsError}
-        </p>
-
-        <Button
-          variant="outline"
-          onClick={reloadEvents}
-        >
-          Intentar nuevamente
-        </Button>
-
-      </div>
-    )
-
-  }
-
-  /*
-   * =========================================================
-   * EVENTO NO ENCONTRADO
-   * =========================================================
-   */
 
   if (!event) {
-
-    return (
-      <NotFoundState
-        label="evento"
-        backHref="/eventos"
-      />
-    )
-
+    return <NotFoundState label="evento" backHref="/eventos" />
   }
 
   /*
    * =========================================================
-   * RENDER
+   * RENDER PRINCIPAL
    * =========================================================
    */
-
   return (
-    <div className="flex flex-col gap-6">
-
-      {/* =====================================================
-          HEADER
-          ===================================================== */}
-
+    <div className="flex flex-col gap-6 pb-10">
+      {/* HEADER */}
       <PageHeader
         title={event.name}
-        description={
-          event.description ||
-          "Detalle del evento."
-        }
+        description={event.description || "Gestión de detalles y estudiantes del evento."}
         action={
           <div className="flex gap-2">
-
-            <Button
-              variant="outline"
-              asChild
-            >
+            <Button variant="outline" asChild>
               <Link href="/eventos">
-                <ArrowLeft data-icon="inline-start" />
+                <ArrowLeft className="mr-2 size-4" />
                 Volver
               </Link>
             </Button>
-
-            <Button
-              variant="outline"
-              onClick={openEditEvent}
-            >
-              <Pencil data-icon="inline-start" />
+            <Button variant="outline" onClick={openEditEvent}>
+              <Pencil className="mr-2 size-4" />
               Editar
             </Button>
-
-            <Button
-              variant="destructive"
-              onClick={() =>
-                setDeletingEvent(event)
-              }
-            >
+            <Button variant="destructive" onClick={() => setDeletingEvent(event)}>
               Eliminar
             </Button>
-
           </div>
         }
       />
 
-      {/* =====================================================
-          INFORMACIÓN DEL EVENTO
-          ===================================================== */}
-
-      <Card className="overflow-hidden py-0">
-
-        <CardContent className="flex flex-col gap-6 p-6">
-
-          <div className="flex flex-col gap-4">
-
-            <div className="flex flex-wrap items-center gap-3">
-
-              <h2 className="font-serif text-xl">
-                {event.name}
-              </h2>
-
-              <EventStatus
-                status={event.status}
-              />
-
-            </div>
-
-            {event.description ? (
-
-              <p className="max-w-3xl text-sm text-muted-foreground">
-                {event.description}
-              </p>
-
-            ) : null}
-
-            <div className="flex flex-wrap gap-x-6 gap-y-3">
-
-              {event.date ? (
-
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-
-                  <CalendarDays className="size-4" />
-
-                  <span>
-                    {formatDate(event.date)}
-                  </span>
-
+      {/* CONTENIDO PRINCIPAL EN GRID */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
+        
+        {/* COLUMNA IZQUIERDA: Info principal y tabla (Toma 2 columnas) */}
+        <div className="flex flex-col gap-6 lg:col-span-2">
+          
+          {/* TARJETA: INFO DEL EVENTO */}
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+                  <h2 className="font-serif text-2xl font-semibold">
+                    {event.name}
+                  </h2>
+                  <EventStatus status={event.status} />
                 </div>
 
-              ) : null}
+                {event.description && (
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {event.description}
+                  </p>
+                )}
 
+                <div className="flex flex-wrap gap-x-8 gap-y-4 pt-2">
+                  {event.date && (
+                    <div className="flex items-center gap-2 text-sm text-foreground">
+                      <div className="flex rounded-full bg-muted p-2">
+                        <CalendarDays className="size-4 text-muted-foreground" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-muted-foreground">Fecha</span>
+                        <span className="font-medium">{formatDate(event.date)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {university && (
+                    <Link
+                      href={`/universidades/${university.id}`}
+                      className="group flex items-center gap-2 text-sm transition-colors"
+                    >
+                      <div className="flex rounded-full bg-muted p-2 transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+                        <MapPin className="size-4 text-muted-foreground group-hover:text-primary" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-muted-foreground">Lugar</span>
+                        <span className="font-medium group-hover:underline">
+                          {university.name}
+                        </span>
+                      </div>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* TARJETA: ESTUDIANTES */}
+          <Card>
+            <CardContent className="flex flex-col gap-6 p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="font-serif text-lg">Estudiantes</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Directorio de estudiantes registrados en el evento.
+                  </p>
+                </div>
+                <Button onClick={openCreateStudent}>
+                  <Plus className="mr-2 size-4" />
+                  Agregar estudiante
+                </Button>
+              </div>
+
+              {studentsLoading ? (
+                <div className="flex h-32 items-center justify-center rounded-md border border-dashed">
+                  <p className="text-sm text-muted-foreground animate-pulse">
+                    Cargando estudiantes...
+                  </p>
+                </div>
+              ) : studentsError ? (
+                <div className="flex flex-col items-center justify-center gap-3 rounded-md border border-dashed p-8 text-center">
+                  <p className="text-sm text-destructive font-medium">
+                    No se pudieron cargar los estudiantes.
+                  </p>
+                  <p className="text-xs text-muted-foreground max-w-sm">
+                    {studentsError}
+                  </p>
+                  <Button variant="outline" size="sm" onClick={reloadStudents} className="mt-2">
+                    Intentar nuevamente
+                  </Button>
+                </div>
+              ) : eventStudents.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center bg-muted/10">
+                  <div className="rounded-full bg-muted p-3 mb-4">
+                    <Users className="size-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium">No hay estudiantes registrados</p>
+                  <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+                    Aún no hay nadie en la lista. Haz clic en "Agregar estudiante" para registrar al primero.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left whitespace-nowrap">
+                      <thead className="bg-muted/50 border-b">
+                        <tr>
+                          <th className="h-10 px-4 align-middle font-medium text-muted-foreground">Documento</th>
+                          <th className="h-10 px-4 align-middle font-medium text-muted-foreground">Nombre</th>
+                          <th className="h-10 px-4 align-middle font-medium text-muted-foreground">Correo</th>
+                          <th className="h-10 px-4 align-middle font-medium text-muted-foreground">Estado</th>
+                          <th className="h-10 px-4 align-middle font-medium text-muted-foreground text-right">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {eventStudents.map((student) => (
+                          <tr
+                            key={student.id}
+                            className="transition-colors hover:bg-muted/50 group"
+                          >
+                            <td className="p-4 align-middle text-muted-foreground">
+                              {student.documentNumber}
+                            </td>
+                            <td className="p-4 align-middle font-medium">
+                              {student.firstName} {student.lastName}
+                            </td>
+                            <td className="p-4 align-middle text-muted-foreground">
+                              {student.email || (
+                                <span className="italic opacity-50">Sin correo</span>
+                              )}
+                            </td>
+                            <td className="p-4 align-middle">
+                              <StudentStatusLabel status={student.status} />
+                            </td>
+                            <td className="p-4 align-middle text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
+                                onClick={() => openEditStudent(student)}
+                                title="Editar estudiante"
+                              >
+                                <Pencil className="size-4 text-muted-foreground" />
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* COLUMNA DERECHA: Sidebar (Universidad y Resumen) */}
+        <div className="flex flex-col gap-6 lg:col-span-1">
+          
+          {/* TARJETA: UNIVERSIDAD ASOCIADA */}
+          <Card>
+            <CardContent className="flex flex-col gap-4 p-6">
+              <h2 className="font-serif text-lg border-b pb-2">Institución</h2>
               {university ? (
-
-                <Link
-                  href={`/universidades/${university.id}`}
-                  className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                >
-
-                  <MapPin className="size-4" />
-
-                  <span>
+                <div className="flex flex-col gap-2">
+                  <Link
+                    href={`/universidades/${university.id}`}
+                    className="font-medium text-primary hover:underline"
+                  >
                     {university.name}
-                  </span>
+                  </Link>
+                  {university.location && (
+                    <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <MapPin className="size-4" />
+                      {university.location}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">
+                  No hay institución asociada.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
-                </Link>
+          {/* TARJETA: RESUMEN Y MÉTRICAS */}
+          <Card>
+            <CardContent className="flex flex-col gap-6 p-6">
+              <h2 className="font-serif text-lg border-b pb-2">Resumen</h2>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <Metric icon={Users} value={eventStudents.length} label="Estudiantes" />
+                <Metric icon={ImageIcon} value={eventPhotos.length} label="Fotografías" />
+              </div>
 
-              ) : null}
+              <div className="rounded-lg bg-muted/40 p-4 mt-2">
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Este evento cuenta actualmente con{" "}
+                  <strong className="font-medium text-foreground">
+                    {eventStudents.length}
+                  </strong>{" "}
+                  estudiante{eventStudents.length !== 1 && "s"} y{" "}
+                  <strong className="font-medium text-foreground">
+                    {eventPhotos.length}
+                  </strong>{" "}
+                  fotografía{eventPhotos.length !== 1 && "s"} en el sistema.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-            </div>
+        </div>
+      </div>
 
-          </div>
-
-          {/* =================================================
-              MÉTRICAS
-              ================================================= */}
-
-          <div className="grid grid-cols-2 gap-6 border-t pt-6 md:grid-cols-3">
-
-            <Metric
-              icon={Users}
-              value={eventStudents.length}
-              label="Estudiantes"
-            />
-
-            <Metric
-              icon={ImageIcon}
-              value={eventPhotos.length}
-              label="Fotografías"
-            />
-
-            <Metric
-              icon={CalendarDays}
-              value={1}
-              label="Evento"
-            />
-
-          </div>
-
-        </CardContent>
-
-      </Card>
-
-      {/* =====================================================
-          UNIVERSIDAD
-          ===================================================== */}
-
-      {university ? (
-
-        <Card>
-
-          <CardContent className="flex flex-col gap-3 p-6">
-
-            <h2 className="font-serif text-lg">
-              Universidad
-            </h2>
-
-            <div className="flex flex-col gap-1">
-
-              <Link
-                href={`/universidades/${university.id}`}
-                className="font-medium hover:underline"
-              >
-                {university.name}
-              </Link>
-
-              {university.location ? (
-
-                <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-
-                  <MapPin className="size-4" />
-
-                  {university.location}
-
-                </span>
-
-              ) : null}
-
-            </div>
-
-          </CardContent>
-
-        </Card>
-
-      ) : (
-
-        <Card>
-
-          <CardContent className="p-6">
-
-            <p className="text-sm text-muted-foreground">
-              La universidad asociada a este evento no fue encontrada.
-            </p>
-
-          </CardContent>
-
-        </Card>
-
-      )}
-
-      {/* =====================================================
-          ESTADÍSTICAS
-          ===================================================== */}
-
-      <Card>
-
-        <CardContent className="p-6">
-
-          <div className="flex flex-col gap-2">
-
-            <h2 className="font-serif text-lg">
-              Resumen
-            </h2>
-
-            <p className="text-sm text-muted-foreground">
-              Este evento tiene{" "}
-              <span className="font-medium text-foreground">
-                {eventStudents.length}
-              </span>{" "}
-              estudiante
-              {eventStudents.length === 1
-                ? ""
-                : "s"}{" "}
-              registrado
-              {eventStudents.length === 1
-                ? ""
-                : "s"}{" "}
-              y{" "}
-              <span className="font-medium text-foreground">
-                {eventPhotos.length}
-              </span>{" "}
-              fotografía
-              {eventPhotos.length === 1
-                ? ""
-                : "s"}.
-            </p>
-
-          </div>
-
-        </CardContent>
-
-      </Card>
-
-      {/* =====================================================
-          DIALOG EVENTO
-          ===================================================== */}
-
+      {/* DIÁLOGOS (Ocultos) */}
       <EventDialog
         open={eventDialogOpen}
         onOpenChange={setEventDialogOpen}
         event={event}
-        defaultUniversityId={
-          event.universityId
-        }
+        defaultUniversityId={event.universityId}
         onSaved={async () => {
-
           await reloadEvents()
-
           setEventDialogOpen(false)
-
         }}
       />
 
-      {/* =====================================================
-          CONFIRMAR ELIMINACIÓN
-          ===================================================== */}
+      <StudentDialog
+        open={studentDialogOpen}
+        onOpenChange={setStudentDialogOpen}
+        eventId={id}
+        student={editingStudent}
+        onCreate={addStudent}
+        onUpdate={editStudent}
+        onSaved={async () => {
+          await reloadStudents()
+        }}
+      />
 
       <ConfirmDialog
         open={!!deletingEvent}
         onOpenChange={(open) => {
-
-          if (!open) {
-            setDeletingEvent(null)
-          }
-
+          if (!open) setDeletingEvent(null)
         }}
         title="Eliminar evento"
-        description={
-          `¿Seguro que deseas eliminar "${deletingEvent?.name}"? Se eliminarán sus estudiantes y fotografías.`
-        }
+        description={`¿Seguro que deseas eliminar "${deletingEvent?.name}"? Se eliminarán todos sus estudiantes y fotografías permanentemente.`}
         onConfirm={handleDeleteEvent}
       />
-
     </div>
   )
 }
 
 /*
  * =========================================================
- * MÉTRICA
+ * COMPONENTES DE APOYO (UI HELPER COMPONENTS)
  * =========================================================
  */
 
@@ -646,96 +469,77 @@ function Metric({
   value: number
   label: string
 }) {
-
   return (
-    <div className="flex flex-col items-center gap-1 text-center md:items-start md:text-left">
-
-      <Icon className="size-4 text-muted-foreground" />
-
-      <span className="font-serif text-xl tabular-nums">
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2 text-muted-foreground mb-1">
+        <Icon className="size-4" />
+        <span className="text-xs font-medium uppercase tracking-wider">{label}</span>
+      </div>
+      <span className="font-serif text-3xl tabular-nums text-foreground">
         {value}
       </span>
-
-      <span className="text-xs text-muted-foreground">
-        {label}
-      </span>
-
     </div>
   )
 }
 
-/*
- * =========================================================
- * ESTADO DEL EVENTO
- * =========================================================
- */
-
-function EventStatus({
-  status,
-}: {
-  status: EventItem["status"]
-}) {
-
-  const config: Record<
-    string,
-    {
-      label: string
-      className: string
-    }
-  > = {
+function EventStatus({ status }: { status: EventItem["status"] }) {
+  const config: Record<string, { label: string; className: string }> = {
     DRAFT: {
       label: "Borrador",
-      className:
-        "text-xs font-medium text-muted-foreground",
+      className: "border-transparent bg-secondary text-secondary-foreground",
     },
-
     ACTIVE: {
       label: "Activo",
-      className:
-        "text-xs font-medium text-green-600",
+      className: "border-transparent bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
     },
-
     ARCHIVED: {
       label: "Archivado",
-      className:
-        "text-xs font-medium text-orange-600",
+      className: "border-transparent bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300",
     },
   }
 
-  const current =
-    config[String(status)] ?? {
-      label: String(status),
-      className:
-        "text-xs font-medium text-muted-foreground",
-    }
+  const current = config[String(status)] ?? {
+    label: String(status),
+    className: "border-transparent bg-secondary text-secondary-foreground",
+  }
 
   return (
-    <span className={current.className}>
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${current.className}`}>
       {current.label}
     </span>
   )
 }
 
-/*
- * =========================================================
- * FORMATEAR FECHA
- * =========================================================
- */
-
-function formatDate(
-  value: string,
-) {
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return value
+function StudentStatusLabel({ status }: { status: Student["status"] }) {
+  const config = {
+    PENDING: {
+      label: "Pendiente",
+      className: "bg-secondary text-secondary-foreground",
+    },
+    SELECTION_IN_PROGRESS: {
+      label: "En proceso",
+      className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+    },
+    SELECTION_SENT: {
+      label: "Enviado",
+      className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
+    },
   }
 
-  return new Intl.DateTimeFormat(
-    "es-CO",
-    {
-      dateStyle: "long",
-    },
-  ).format(date)
+  const current = config[status] || { label: status, className: "bg-secondary text-secondary-foreground" }
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors border-transparent ${current.className}`}>
+      {current.label}
+    </span>
+  )
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return new Intl.DateTimeFormat("es-CO", {
+    dateStyle: "long",
+  }).format(date)
 }

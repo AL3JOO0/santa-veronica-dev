@@ -1,7 +1,9 @@
 'use client'
 
 import * as React from 'react'
+
 import { toast } from 'sonner'
+
 import {
   Dialog,
   DialogContent,
@@ -10,164 +12,347 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { useStore } from '@/lib/store'
-import type { Status, Student } from '@/lib/types'
+  Label,
+} from '@/components/ui/label'
 
-interface Props {
+import type {
+  Student,
+  StudentStatus,
+} from '@/lib/types'
+
+interface StudentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  student?: Student
+
   eventId: string
+
+  student?: Student | null
+
+  onSaved?: () => void | Promise<void>
+
+  onCreate: (
+    student: {
+      eventId: string
+      documentNumber: string
+      firstName: string
+      lastName: string
+      email: string | null
+      status: StudentStatus
+    },
+  ) => Promise<unknown>
+onUpdate?: (
+  id: string,
+  student: {
+    documentNumber?: string
+    firstName?: string
+    lastName?: string
+    email?: string | null
+    status?: StudentStatus
+  },
+) => Promise<unknown>
 }
 
-export function StudentDialog({ open, onOpenChange, student, eventId }: Props) {
-  const store = useStore()
-  const editing = Boolean(student)
+export function StudentDialog({
+  open,
+  onOpenChange,
+  eventId,
+  student,
+  onSaved,
+  onCreate,
+  onUpdate,
+}: StudentDialogProps) {
+  const editing = !!student
 
-  const [firstName, setFirstName] = React.useState('')
-  const [lastName, setLastName] = React.useState('')
-  const [code, setCode] = React.useState('')
-  const [program, setProgram] = React.useState('')
-  const [email, setEmail] = React.useState('')
-  const [status, setStatus] = React.useState<Status>('activo')
+  const [documentNumber, setDocumentNumber] =
+    React.useState('')
+
+  const [firstName, setFirstName] =
+    React.useState('')
+
+  const [lastName, setLastName] =
+    React.useState('')
+
+  const [email, setEmail] =
+    React.useState('')
+
+  const [status, setStatus] =
+  React.useState<StudentStatus>('PENDING')
+
+  const [saving, setSaving] =
+    React.useState(false)
 
   React.useEffect(() => {
-    if (open) {
-      setFirstName(student?.firstName ?? '')
-      setLastName(student?.lastName ?? '')
-      setCode(student?.code ?? '')
-      setProgram(student?.program ?? '')
-      setEmail(student?.email ?? '')
-      setStatus(student?.status ?? 'activo')
+    if (!open) {
+      return
     }
+
+    setDocumentNumber(
+      student?.documentNumber ?? '',
+    )
+
+    setFirstName(
+      student?.firstName ?? '',
+    )
+
+    setLastName(
+      student?.lastName ?? '',
+    )
+
+    setEmail(
+      student?.email ?? '',
+    )
+
+    setStatus(
+  student?.status ?? 'PENDING',
+)
   }, [open, student])
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!firstName.trim() || !lastName.trim())
-      return toast.error('Nombre y apellidos son obligatorios')
-    if (!code.trim()) return toast.error('El documento/código es obligatorio')
+  async function handleSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
 
-    const payload = {
-      eventId,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      code: code.trim(),
-      program: program.trim(),
-      email: email.trim(),
-      status,
+    if (!documentNumber.trim()) {
+      toast.error(
+        'El documento es obligatorio.',
+      )
+      return
     }
-    if (editing && student) {
-      store.updateStudent(student.id, payload)
-      toast.success('Estudiante actualizado')
-    } else {
-      store.addStudent(payload)
-      toast.success('Estudiante agregado')
+
+    if (!firstName.trim()) {
+      toast.error(
+        'El nombre es obligatorio.',
+      )
+      return
     }
-    onOpenChange(false)
+
+    if (!lastName.trim()) {
+      toast.error(
+        'El apellido es obligatorio.',
+      )
+      return
+    }
+
+    try {
+      setSaving(true)
+
+      if (editing && student && onUpdate) {
+        await onUpdate(student.id, {
+          documentNumber:
+            documentNumber.trim(),
+
+          firstName:
+            firstName.trim(),
+
+          lastName:
+            lastName.trim(),
+
+          email:
+            email.trim() || null,
+
+          status,
+        })
+
+        toast.success(
+          'Estudiante actualizado correctamente.',
+        )
+      } else {
+        await onCreate({
+          eventId,
+
+          documentNumber:
+            documentNumber.trim(),
+
+          firstName:
+            firstName.trim(),
+
+          lastName:
+            lastName.trim(),
+
+          email:
+            email.trim() || null,
+
+          status,
+        })
+
+        toast.success(
+          'Estudiante agregado correctamente.',
+        )
+      }
+
+      await onSaved?.()
+
+      onOpenChange(false)
+    } catch (error) {
+      console.error(
+        'Error guardando estudiante:',
+        error,
+      )
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo guardar el estudiante.',
+      )
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>
-              {editing ? 'Editar estudiante' : 'Nuevo estudiante'}
-            </DialogTitle>
-            <DialogDescription>
-              {editing
-                ? 'Actualiza la información del estudiante.'
-                : 'Agrega un estudiante a este evento.'}
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {editing
+              ? 'Editar estudiante'
+              : 'Agregar estudiante'}
+          </DialogTitle>
 
-          <FieldGroup className="py-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="st-first">Nombre</FieldLabel>
-                <Input
-                  id="st-first"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  autoFocus
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="st-last">Apellidos</FieldLabel>
-                <Input
-                  id="st-last"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                />
-              </Field>
+          <DialogDescription>
+            {editing
+              ? 'Actualiza la información del estudiante.'
+              : 'Registra un estudiante en este evento.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-4"
+        >
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="documentNumber">
+              Documento
+            </Label>
+
+            <Input
+              id="documentNumber"
+              value={documentNumber}
+              onChange={(event) =>
+                setDocumentNumber(
+                  event.target.value,
+                )
+              }
+              placeholder="Número de documento"
+              disabled={saving}
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="firstName">
+                Nombre
+              </Label>
+
+              <Input
+                id="firstName"
+                value={firstName}
+                onChange={(event) =>
+                  setFirstName(
+                    event.target.value,
+                  )
+                }
+                placeholder="Nombre"
+                disabled={saving}
+              />
             </div>
-            <Field>
-              <FieldLabel htmlFor="st-code">Documento / Código</FieldLabel>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="lastName">
+                Apellido
+              </Label>
+
               <Input
-                id="st-code"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="20261234"
+                id="lastName"
+                value={lastName}
+                onChange={(event) =>
+                  setLastName(
+                    event.target.value,
+                  )
+                }
+                placeholder="Apellido"
+                disabled={saving}
               />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="st-program">Programa</FieldLabel>
-              <Input
-                id="st-program"
-                value={program}
-                onChange={(e) => setProgram(e.target.value)}
-                placeholder="Ingeniería de Sistemas"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="st-email">Correo</FieldLabel>
-              <Input
-                id="st-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="nombre@correo.edu"
-              />
-            </Field>
-            <Field>
-              <FieldLabel>Estado</FieldLabel>
-              <Select
-                value={status}
-                onValueChange={(v) => setStatus(v as Status)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="activo">Activo</SelectItem>
-                  <SelectItem value="borrador">Borrador</SelectItem>
-                  <SelectItem value="archivado">Archivado</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          </FieldGroup>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="email">
+              Correo electrónico
+            </Label>
+
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(event) =>
+                setEmail(
+                  event.target.value,
+                )
+              }
+              placeholder="correo@ejemplo.com"
+              disabled={saving}
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="status">
+              Estado
+            </Label>
+
+            <select
+              id="status"
+              value={status}
+              onChange={(event) =>
+  setStatus(
+    event.target.value as StudentStatus,
+  )
+}
+              disabled={saving}
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="PENDING">
+  Pendiente
+</option>
+
+<option value="SELECTION_IN_PROGRESS">
+  Selección en progreso
+</option>
+
+<option value="SELECTION_SENT">
+  Selección enviada
+</option>
+            </select>
+          </div>
 
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() =>
+                onOpenChange(false)
+              }
+              disabled={saving}
             >
               Cancelar
             </Button>
-            <Button type="submit">
-              {editing ? 'Guardar cambios' : 'Agregar estudiante'}
+
+            <Button
+              type="submit"
+              disabled={saving}
+            >
+              {saving
+                ? 'Guardando...'
+                : editing
+                  ? 'Guardar cambios'
+                  : 'Agregar estudiante'}
             </Button>
           </DialogFooter>
         </form>
