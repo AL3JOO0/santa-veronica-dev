@@ -22,7 +22,6 @@ const EXAMPLE_ROW = [
 export function downloadStudentTemplate() {
   const worksheet = XLSX.utils.aoa_to_sheet([HEADERS, EXAMPLE_ROW])
 
-  // Anchos de columna legibles
   worksheet["!cols"] = [
     { wch: 22 },
     { wch: 18 },
@@ -102,5 +101,51 @@ export async function parseStudentFile(
       status: normalizedStatus ?? "PENDING",
       errors,
     }
+  })
+}
+
+/*
+ * =========================================================
+ * DETECTAR DOCUMENTOS REPETIDOS
+ * =========================================================
+ *
+ * Marca como error las filas cuyo documento:
+ * - ya existe en la lista actual de estudiantes del evento, o
+ * - se repite dentro del mismo archivo.
+ */
+
+export function flagDuplicateDocuments(
+  rows: ParsedStudentRow[],
+  existingDocuments: string[] = []
+): ParsedStudentRow[] {
+  const existingSet = new Set(
+    existingDocuments.map((d) => d.trim().toLowerCase())
+  )
+
+  // documento normalizado -> número de la primera fila donde aparece
+  const seenInFile = new Map<string, number>()
+
+  return rows.map((row) => {
+    if (!row.documentNumber) {
+      // ya tiene el error de "Falta el documento", no hace falta más
+      return row
+    }
+
+    const key = row.documentNumber.trim().toLowerCase()
+    const errors = [...row.errors]
+
+    if (existingSet.has(key)) {
+      errors.push("Este documento ya está registrado en el evento")
+    }
+
+    if (seenInFile.has(key)) {
+      errors.push(
+        `Documento duplicado en el archivo (ya aparece en la fila ${seenInFile.get(key)})`
+      )
+    } else {
+      seenInFile.set(key, row.row)
+    }
+
+    return errors.length === row.errors.length ? row : { ...row, errors }
   })
 }

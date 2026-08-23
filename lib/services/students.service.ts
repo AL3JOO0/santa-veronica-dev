@@ -13,6 +13,11 @@ export type UpdateStudentInput = Partial<
   >
 >
 
+export type BulkCreateStudentInput = Omit<
+  Student,
+  'id' | 'createdAt' | 'updatedAt' | 'authUserId'
+>
+
 function mapStudent(row: any): Student {
   return {
     id: row.id,
@@ -138,6 +143,38 @@ export async function createStudent(
   }
 
   return mapStudent(data)
+}
+
+/**
+ * Crear varios estudiantes en un solo insert (carga masiva).
+ */
+export async function createStudentsBulk(
+  students: BulkCreateStudentInput[],
+): Promise<Student[]> {
+  if (students.length === 0) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('students')
+    .insert(
+      students.map((student) => ({
+        event_id: student.eventId,
+        document_number: student.documentNumber,
+        first_name: student.firstName,
+        last_name: student.lastName,
+        email: student.email || null,
+        status: student.status,
+      })),
+    )
+    .select()
+
+  if (error) {
+    console.error('Error creando estudiantes en lote:', error)
+    throw new Error(error.message)
+  }
+
+  return (data ?? []).map(mapStudent)
 }
 
 /**
