@@ -108,6 +108,7 @@ export function BulkStudentDialog({
           firstName: row.firstName,
           lastName: row.lastName,
           email: row.email,
+          password: row.password,
           status: row.status,
         })),
       )
