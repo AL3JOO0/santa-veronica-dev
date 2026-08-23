@@ -3,30 +3,44 @@
 import * as XLSX from "xlsx"
 import type { StudentStatus } from "@/lib/types"
 
-const HEADERS = ["Documento", "Nombre", "Apellido", "Correo", "Contraseña", "Estado"]
+/*
+ * =========================================================
+ * PLANTILLA DESCARGABLE
+ * =========================================================
+ */
+
+const HEADERS = ["Documento", "Nombre", "Apellido", "Correo", "Estado"]
+
 const EXAMPLE_ROW = [
   "EJEMPLO-BORRAR-ESTA-FILA",
   "Juana",
   "Pérez",
   "juana.perez@email.com",
-  "Foto2026!",
   "Pendiente",
 ]
 
 export function downloadStudentTemplate() {
   const worksheet = XLSX.utils.aoa_to_sheet([HEADERS, EXAMPLE_ROW])
+
   worksheet["!cols"] = [
     { wch: 22 },
     { wch: 18 },
     { wch: 18 },
     { wch: 28 },
-    { wch: 20 },
-    { wch: 18 },
+    { wch: 14 },
   ]
+
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, "Estudiantes")
+
   XLSX.writeFile(workbook, "plantilla-estudiantes.xlsx")
 }
+
+/*
+ * =========================================================
+ * PARSEAR Y VALIDAR EL ARCHIVO SUBIDO
+ * =========================================================
+ */
 
 export interface ParsedStudentRow {
   row: number
@@ -34,7 +48,6 @@ export interface ParsedStudentRow {
   firstName: string
   lastName: string
   email: string | null
-  password: string
   status: StudentStatus
   errors: string[]
 }
@@ -43,70 +56,96 @@ const STATUS_MAP: Record<string, StudentStatus> = {
   "": "PENDING",
   "pendiente": "PENDING",
   "en proceso": "SELECTION_IN_PROGRESS",
-  "selección en progreso": "SELECTION_IN_PROGRESS",
-  "seleccion en progreso": "SELECTION_IN_PROGRESS",
   "enviado": "SELECTION_SENT",
-  "selección enviada": "SELECTION_SENT",
-  "seleccion enviada": "SELECTION_SENT",
 }
 
-function normalizeDocumentNumber(value: string) {
-  const trimmed = value.trim()
-  return /^[\d.\-\s]+$/.test(trimmed) ? trimmed.replace(/\D/g, "") : trimmed
-}
-
-export async function parseStudentFile(file: File): Promise<ParsedStudentRow[]> {
+export async function parseStudentFile(
+  file: File
+): Promise<ParsedStudentRow[]> {
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: "array" })
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
-  if (!sheet) throw new Error("El archivo no contiene una hoja válida.")
 
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
+  const rows: string[][] = XLSX.utils.sheet_to_json(sheet, {
     header: 1,
     blankrows: false,
-    raw: false,
   })
 
-  const parsed = rows.slice(1)
-    .map((cols, index) => {
-      const values = [0, 1, 2, 3, 4, 5].map((i) => (cols[i] ?? "").toString().trim())
-      const [documentRaw, firstName, lastName, email, password, status] = values
-      const documentNumber = normalizeDocumentNumber(documentRaw)
-      const errors: string[] = []
+  // La primera fila son los encabezados, la saltamos.
+  const dataRows = rows.slice(1)
 
-      if (!documentNumber && !firstName && !lastName && !email && !password && !status) return null
-      if (documentNumber === "EJEMPLO-BORRAR-ESTA-FILA") return null
+  return dataRows.map((cols, index) => {
+    const [documentNumber, firstName, lastName, email, status] = [
+      0, 1, 2, 3, 4,
+    ].map((i) => (cols[i] ?? "").toString().trim())
 
-      if (!documentNumber) errors.push("Falta el documento")
-      if (!firstName) errors.push("Falta el nombre")
-      if (!lastName) errors.push("Falta el apellido")
-      if (!password) errors.push("Falta la contraseña")
-      if (password && password.length < 6) errors.push("La contraseña debe tener mínimo 6 caracteres")
+    const errors: string[] = []
 
-      const normalizedStatus = STATUS_MAP[status.toLowerCase()]
-      if (status && !normalizedStatus) {
-        errors.push(`Estado "${status}" no reconocido (usa: Pendiente, En proceso o Enviado)`)
-      }
+    if (!documentNumber) errors.push("Falta el documento")
+    if (!firstName) errors.push("Falta el nombre")
+    if (!lastName) errors.push("Falta el apellido")
 
-      return {
-        row: index + 2,
-        documentNumber,
-        firstName,
-        lastName,
-        email: email || null,
-        password,
-        status: normalizedStatus ?? "PENDING",
-        errors,
-      } satisfies ParsedStudentRow
-    })
-    .filter((row): row is ParsedStudentRow => row !== null)
+    const normalizedStatus = STATUS_MAP[status.toLowerCase()]
+    if (status && !normalizedStatus) {
+      errors.push(
+        `Estado "${status}" no reconocido (usa: Pendiente, En proceso o Enviado)`
+      )
+    }
 
-  const counts = new Map<string, number>()
-  for (const row of parsed) counts.set(row.documentNumber, (counts.get(row.documentNumber) || 0) + 1)
+    return {
+      row: index + 2, // +2: fila 1 es encabezado, index empieza en 0
+      documentNumber,
+      firstName,
+      lastName,
+      email: email || null,
+      status: normalizedStatus ?? "PENDING",
+      errors,
+    }
+  })
+}
 
-  return parsed.map((row) =>
-    row.documentNumber && (counts.get(row.documentNumber) || 0) > 1
-      ? { ...row, errors: [...row.errors, "El documento está repetido en el archivo"] }
-      : row,
+/*
+ * =========================================================
+ * DETECTAR DOCUMENTOS REPETIDOS
+ * =========================================================
+ *
+ * Marca como error las filas cuyo documento:
+ * - ya existe en la lista actual de estudiantes del evento, o
+ * - se repite dentro del mismo archivo.
+ */
+
+export function flagDuplicateDocuments(
+  rows: ParsedStudentRow[],
+  existingDocuments: string[] = []
+): ParsedStudentRow[] {
+  const existingSet = new Set(
+    existingDocuments.map((d) => d.trim().toLowerCase())
   )
+
+  // documento normalizado -> número de la primera fila donde aparece
+  const seenInFile = new Map<string, number>()
+
+  return rows.map((row) => {
+    if (!row.documentNumber) {
+      // ya tiene el error de "Falta el documento", no hace falta más
+      return row
+    }
+
+    const key = row.documentNumber.trim().toLowerCase()
+    const errors = [...row.errors]
+
+    if (existingSet.has(key)) {
+      errors.push("Este documento ya está registrado en el evento")
+    }
+
+    if (seenInFile.has(key)) {
+      errors.push(
+        `Documento duplicado en el archivo (ya aparece en la fila ${seenInFile.get(key)})`
+      )
+    } else {
+      seenInFile.set(key, row.row)
+    }
+
+    return errors.length === row.errors.length ? row : { ...row, errors }
+  })
 }

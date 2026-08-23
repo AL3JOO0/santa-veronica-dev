@@ -1,15 +1,13 @@
 "use client"
 
-import { useMemo, useRef, useState, type ChangeEvent } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useStudents } from "@/hooks/use-students"
 
 import {
   ArrowLeft,
   CalendarDays,
-  Download,
   ImageIcon,
-  Loader2,
   MapPin,
   Pencil,
   Plus,
@@ -27,10 +25,9 @@ import { NotFoundState } from "@/components/shared/not-found-state"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { EventDialog } from "@/components/forms/event-dialog"
 import { StudentDialog } from "@/components/forms/student-dialog"
+import { BulkStudentDialog } from "@/components/forms/bulk-student-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { downloadStudentTemplate, parseStudentFile } from "@/lib/services/students-template"
-import { importStudentsBulk } from "@/lib/services/students.service"
 
 import type { EventItem, Student } from "@/lib/types"
 
@@ -67,6 +64,7 @@ export function EventDetail({ id }: Props) {
     loading: studentsLoading,
     error: studentsError,
     addStudent,
+    bulkAddStudents,
     editStudent,
     removeStudent,
     reload: reloadStudents,
@@ -98,11 +96,9 @@ export function EventDetail({ id }: Props) {
    */
   const [eventDialogOpen, setEventDialogOpen] = useState(false)
   const [studentDialogOpen, setStudentDialogOpen] = useState(false)
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
   const [deletingEvent, setDeletingEvent] = useState<EventItem | null>(null)
-  const [importingStudents, setImportingStudents] = useState(false)
-  const [importProgress, setImportProgress] = useState({ processed: 0, total: 0 })
-  const studentFileInputRef = useRef<HTMLInputElement>(null)
 
   /*
    * =========================================================
@@ -121,49 +117,6 @@ export function EventDetail({ id }: Props) {
   function openEditStudent(student: Student) {
     setEditingStudent(student)
     setStudentDialogOpen(true)
-  }
-
-  async function handleStudentImport(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    try {
-      setImportingStudents(true)
-      setImportProgress({ processed: 0, total: 0 })
-      const rows = await parseStudentFile(file)
-
-      if (rows.length === 0) throw new Error('El archivo no contiene estudiantes para importar.')
-
-      const invalidRows = rows.filter((row) => row.errors.length > 0)
-      if (invalidRows.length > 0) {
-        const first = invalidRows[0]
-        throw new Error(`Hay ${invalidRows.length} fila(s) con errores. Fila ${first.row}: ${first.errors.join(', ')}`)
-      }
-
-      setImportProgress({ processed: 0, total: rows.length })
-      const result = await importStudentsBulk(
-        id,
-        rows.map((row) => ({
-          documentNumber: row.documentNumber,
-          firstName: row.firstName,
-          lastName: row.lastName,
-          email: row.email,
-          password: row.password,
-          status: row.status,
-        })),
-        (processed, total) => setImportProgress({ processed, total }),
-      )
-
-      toast.success(`Importación completada: ${result.created} nuevo(s) y ${result.updated} actualizado(s).`)
-      await reloadStudents()
-    } catch (error) {
-      console.error('Error importando estudiantes:', error)
-      toast.error(error instanceof Error ? error.message : 'No se pudo importar el archivo de estudiantes.')
-    } finally {
-      setImportingStudents(false)
-      setImportProgress({ processed: 0, total: 0 })
-      if (studentFileInputRef.current) studentFileInputRef.current.value = ''
-    }
   }
 
   async function handleDeleteEvent() {
@@ -237,21 +190,17 @@ export function EventDetail({ id }: Props) {
         action={
           <div className="flex gap-2">
             <Button
-  variant="outline"
-  nativeButton={false}
-  render={<Link href="/eventos" />}
->
-  <ArrowLeft className="mr-2 size-4" />
-  Volver
-</Button>
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/eventos" />}
+            >
+              <ArrowLeft className="mr-2 size-4" />
+              Volver
+            </Button>
             <Button variant="outline" onClick={openEditEvent}>
               <Pencil className="mr-2 size-4" />
               Editar
             </Button>
-
-          
-
-
             <Button variant="destructive" onClick={() => setDeletingEvent(event)}>
               Eliminar
             </Button>
@@ -326,35 +275,12 @@ export function EventDetail({ id }: Props) {
                     Directorio de estudiantes registrados en el evento.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={downloadStudentTemplate} disabled={importingStudents}>
-                    <Download className="mr-2 size-4" />
-                    Plantilla
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setBulkDialogOpen(true)}>
+                    <Upload className="mr-2 size-4" />
+                    Importar Excel
                   </Button>
-                  <input
-                    ref={studentFileInputRef}
-                    type="file"
-                    accept=".xlsx,.xls"
-                    className="hidden"
-                    onChange={handleStudentImport}
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={() => studentFileInputRef.current?.click()}
-                    disabled={importingStudents}
-                  >
-                    {importingStudents ? (
-                      <Loader2 className="mr-2 size-4 animate-spin" />
-                    ) : (
-                      <Upload className="mr-2 size-4" />
-                    )}
-                    {importingStudents
-                      ? importProgress.total > 0
-                        ? `Importando ${importProgress.processed}/${importProgress.total}`
-                        : 'Leyendo archivo...'
-                      : 'Importar Excel'}
-                  </Button>
-                  <Button onClick={openCreateStudent} disabled={importingStudents}>
+                  <Button onClick={openCreateStudent}>
                     <Plus className="mr-2 size-4" />
                     Agregar estudiante
                   </Button>
@@ -386,7 +312,7 @@ export function EventDetail({ id }: Props) {
                   </div>
                   <p className="text-sm font-medium">No hay estudiantes registrados</p>
                   <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-                    Aún no hay nadie en la lista. Haz clic en "Agregar estudiante" para registrar al primero.
+                    Aún no hay nadie en la lista. Haz clic en "Agregar estudiante" para registrar al primero, o usa "Importar Excel" para cargar varios a la vez.
                   </p>
                 </div>
               ) : (
@@ -403,51 +329,51 @@ export function EventDetail({ id }: Props) {
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-  {eventStudents.map((student) => (
-    <tr
-      key={student.id}
-      className="transition-colors hover:bg-muted/50 group"
-    >
-      <td className="p-4 align-middle text-muted-foreground">
-        {student.documentNumber}
-      </td>
-      <td className="p-4 align-middle font-medium">
-        {student.firstName} {student.lastName}
-      </td>
-      <td className="p-4 align-middle text-muted-foreground">
-        {student.email || (
-          <span className="italic opacity-50">Sin correo</span>
-        )}
-      </td>
-      <td className="p-4 align-middle">
-        <StudentStatusLabel status={student.status} />
-      </td>
-      <td className="p-4 align-middle text-right">
-        <div className="flex justify-end gap-1">
-              <Button
-  variant="ghost"
-  size="icon"
-  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
-  nativeButton={false}
-  render={<Link href={`/eventos/${id}/estudiantes/${student.id}`} />}
-  title="Ver fotos"
->
-  <ImageIcon className="size-4 text-muted-foreground" />
-</Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
-            onClick={() => openEditStudent(student)}
-            title="Editar estudiante"
-          >
-            <Pencil className="size-4 text-muted-foreground" />
-          </Button>
-        </div>
-      </td>
-    </tr>
-  ))}
-</tbody>
+                        {eventStudents.map((student) => (
+                          <tr
+                            key={student.id}
+                            className="transition-colors hover:bg-muted/50 group"
+                          >
+                            <td className="p-4 align-middle text-muted-foreground">
+                              {student.documentNumber}
+                            </td>
+                            <td className="p-4 align-middle font-medium">
+                              {student.firstName} {student.lastName}
+                            </td>
+                            <td className="p-4 align-middle text-muted-foreground">
+                              {student.email || (
+                                <span className="italic opacity-50">Sin correo</span>
+                              )}
+                            </td>
+                            <td className="p-4 align-middle">
+                              <StudentStatusLabel status={student.status} />
+                            </td>
+                            <td className="p-4 align-middle text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
+                                  nativeButton={false}
+                                  render={<Link href={`/eventos/${id}/estudiantes/${student.id}`} />}
+                                  title="Ver fotos"
+                                >
+                                  <ImageIcon className="size-4 text-muted-foreground" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
+                                  onClick={() => openEditStudent(student)}
+                                  title="Editar estudiante"
+                                >
+                                  <Pencil className="size-4 text-muted-foreground" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
                     </table>
                   </div>
                 </div>
@@ -538,6 +464,17 @@ export function EventDetail({ id }: Props) {
           await reloadStudents()
         }}
       />
+
+      <BulkStudentDialog
+  open={bulkDialogOpen}
+  onOpenChange={setBulkDialogOpen}
+  eventId={id}
+  existingDocuments={eventStudents.map((s) => s.documentNumber)}
+  onBulkCreate={bulkAddStudents}
+  onSaved={async () => {
+    await reloadStudents()
+  }}
+/>
 
       <ConfirmDialog
         open={!!deletingEvent}

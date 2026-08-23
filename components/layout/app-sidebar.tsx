@@ -8,8 +8,6 @@ import {
   LayoutDashboard,
   GraduationCap,
   CalendarDays,
-  Users,
-  Images,
   Settings,
 } from 'lucide-react'
 
@@ -36,8 +34,6 @@ const mainNav = [
   { title: 'Dashboard', href: '/', icon: LayoutDashboard },
   { title: 'Universidades', href: '/universidades', icon: GraduationCap },
   { title: 'Eventos', href: '/eventos', icon: CalendarDays },
-  { title: 'Estudiantes', href: '/estudiantes', icon: Users },
-  { title: 'Fotografías', href: '/fotografias', icon: Images },
 ]
 
 const secondaryNav = [
