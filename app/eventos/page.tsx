@@ -6,7 +6,8 @@ import { CalendarDays, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { useEvents } from '@/hooks/use-events'
-import { useStore } from '@/lib/store'
+import { useEventCounts } from "@/hooks/use-event-counts"
+import { useUniversities } from '@/hooks/use-universities'
 
 import { EventCard } from '@/components/events/event-card'
 import { EventDialog } from '@/components/forms/event-dialog'
@@ -18,7 +19,6 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
 
 import type { EventItem } from '@/lib/types'
-import { useUniversities } from '@/hooks/use-universities'
 
 export default function EventosPage() {
 
@@ -35,12 +35,17 @@ export default function EventosPage() {
     reload,
     removeEvent,
   } = useEvents()
+  
   const {
-  universities,
-  loading: universitiesLoading,
-  error: universitiesError,
-  reload: reloadUniversities,
-} = useUniversities()
+    universities,
+    loading: universitiesLoading,
+    error: universitiesError,
+    reload: reloadUniversities,
+  } = useUniversities()
+
+  // 👇 Aquí está la corrección: inicializamos getCounts desde el hook
+  const { getCounts } = useEventCounts()
+
   /*
    * =========================================================
    * STORE
@@ -50,10 +55,7 @@ export default function EventosPage() {
    * el store.
    */
 
-  const {
-    students,
-    photos,
-  } = useStore()
+
 
   /*
    * =========================================================
@@ -61,17 +63,13 @@ export default function EventosPage() {
    * =========================================================
    */
 
-  const [query, setQuery] =
-    React.useState('')
+  const [query, setQuery] = React.useState('')
 
-  const [editingEvent, setEditingEvent] =
-    React.useState<EventItem | undefined>()
+  const [editingEvent, setEditingEvent] = React.useState<EventItem | undefined>()
 
-  const [deletingEvent, setDeletingEvent] =
-    React.useState<EventItem | null>(null)
+  const [deletingEvent, setDeletingEvent] = React.useState<EventItem | null>(null)
 
-  const [eventDialogOpen, setEventDialogOpen] =
-    React.useState(false)
+  const [eventDialogOpen, setEventDialogOpen] = React.useState(false)
 
   /*
    * =========================================================
@@ -79,45 +77,31 @@ export default function EventosPage() {
    * =========================================================
    */
 
-  const filteredEvents =
-    React.useMemo(() => {
+  const filteredEvents = React.useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase()
 
-      const normalizedQuery =
-        query.trim().toLowerCase()
+    if (!normalizedQuery) {
+      return events
+    }
 
-      if (!normalizedQuery) {
-        return events
-      }
+    return events.filter((event) =>
+      event.name.toLowerCase().includes(normalizedQuery),
+    )
+  }, [events, query])
 
-      return events.filter(
-        (event) =>
-          event.name
-            .toLowerCase()
-            .includes(
-              normalizedQuery,
-            ),
-      )
-
-    }, [
-      events,
-      query,
-    ])
-    function openCreateEvent() {
-  setEditingEvent(undefined)
-  setEventDialogOpen(true)
+  function openCreateEvent() {
+    setEditingEvent(undefined)
+    setEventDialogOpen(true)
   }
+
   /*
    * =========================================================
    * EDITAR EVENTO
    * =========================================================
    */
 
-  function openEditEvent(
-    event: EventItem,
-  ) {
-
+  function openEditEvent(event: EventItem) {
     setEditingEvent(event)
-
     setEventDialogOpen(true)
   }
 
@@ -127,10 +111,7 @@ export default function EventosPage() {
    * =========================================================
    */
 
-  function handleEventDialogChange(
-    open: boolean,
-  ) {
-
+  function handleEventDialogChange(open: boolean) {
     setEventDialogOpen(open)
 
     if (!open) {
@@ -145,32 +126,17 @@ export default function EventosPage() {
    */
 
   async function handleDeleteEvent() {
-
     if (!deletingEvent) {
       return
     }
 
     try {
-
-      await removeEvent(
-        deletingEvent.id,
-      )
-
-      toast.success(
-        'Evento eliminado correctamente.',
-      )
-
+      await removeEvent(deletingEvent.id)
+      toast.success('Evento eliminado correctamente.')
       setDeletingEvent(null)
-
       await reload()
-
     } catch (error) {
-
-      console.error(
-        'Error eliminando evento:',
-        error,
-      )
-
+      console.error('Error eliminando evento:', error)
       toast.error(
         error instanceof Error
           ? error.message
@@ -186,14 +152,11 @@ export default function EventosPage() {
    */
 
   if (loading || universitiesLoading) {
-
     return (
       <div className="flex items-center justify-center py-20">
-
         <p className="text-sm text-muted-foreground">
           Cargando eventos...
         </p>
-
       </div>
     )
   }
@@ -205,50 +168,37 @@ export default function EventosPage() {
    */
 
   if (error) {
-
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-20">
-
         <p className="text-sm text-destructive">
           No se pudieron cargar los eventos.
         </p>
-
         <p className="text-xs text-muted-foreground">
           {error}
         </p>
-
-        <Button
-          variant="outline"
-          onClick={reload}
-        >
+        <Button variant="outline" onClick={reload}>
           Intentar nuevamente
         </Button>
-
       </div>
     )
   }
-    if (universitiesError) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 py-20">
 
-      <p className="text-sm text-destructive">
-        No se pudieron cargar las universidades.
-      </p>
+  if (universitiesError) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20">
+        <p className="text-sm text-destructive">
+          No se pudieron cargar las universidades.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {universitiesError}
+        </p>
+        <Button variant="outline" onClick={reloadUniversities}>
+          Intentar nuevamente
+        </Button>
+      </div>
+    )
+  }
 
-      <p className="text-xs text-muted-foreground">
-        {universitiesError}
-      </p>
-
-      <Button
-        variant="outline"
-        onClick={reloadUniversities}
-      >
-        Intentar nuevamente
-      </Button>
-
-    </div>
-  )
-}
   /*
    * =========================================================
    * RENDER
@@ -297,24 +247,19 @@ export default function EventosPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredEvents.map((event) => {
-            const eventStudents = students.filter(
-              (student) => student.eventId === event.id
-            )
-            const studentIds = new Set(eventStudents.map((s) => s.id))
-            const eventPhotos = photos.filter((photo) =>
-              studentIds.has(photo.studentId)
-            )
             const university = universities.find(
               (item) => item.id === event.universityId
             )
+            // Ya no dará error porque getCounts está definido arriba
+            const { studentCount, photoCount } = getCounts(event.id)
 
             return (
               <EventCard
                 key={event.id}
                 event={event}
                 universityName={university?.name}
-                studentCount={eventStudents.length}
-                photoCount={eventPhotos.length}
+                studentCount={studentCount}
+                photoCount={photoCount}
                 onEdit={() => openEditEvent(event)}
                 onDelete={() => setDeletingEvent(event)}
               />

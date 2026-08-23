@@ -57,6 +57,45 @@ export async function getStudents(): Promise<Student[]> {
 }
 
 /**
+ * Contar todos los estudiantes (para estadísticas).
+ */
+export async function getStudentsCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from('students')
+    .select('*', { count: 'exact', head: true })
+
+  if (error) {
+    console.error('Error contando estudiantes:', error)
+    throw new Error('No se pudieron contar los estudiantes')
+  }
+
+  return count ?? 0
+}
+
+/**
+ * Traer solamente id y event_id de cada estudiante.
+ * Útil para agregar conteos por evento en el cliente
+ * sin traer todas las columnas de la tabla.
+ */
+export async function getStudentEventMap(): Promise<
+  { id: string; eventId: string }[]
+> {
+  const { data, error } = await supabase
+    .from('students')
+    .select('id, event_id')
+
+  if (error) {
+    console.error('Error obteniendo relación estudiantes-eventos:', error)
+    throw new Error('No se pudo obtener la relación estudiantes-eventos')
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    eventId: row.event_id,
+  }))
+}
+
+/**
  * Obtener estudiantes de un evento.
  */
 export async function getStudentsByEvent(
@@ -252,5 +291,4 @@ export async function deleteStudent(
 
     throw new Error(error.message)
   }
-    
 }

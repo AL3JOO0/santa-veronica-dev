@@ -23,8 +23,8 @@ import { EventDialog } from '@/components/forms/event-dialog'
 
 import { useEvents } from '@/hooks/use-events'
 import { useUniversities } from '@/hooks/use-universities'
-
-import { useStore } from '@/lib/store'
+import { useDashboardStats } from '@/hooks/use-dashboard-stats'
+import { useEventCounts } from '@/hooks/use-event-counts'
 
 import { Button } from '@/components/ui/button'
 
@@ -50,14 +50,9 @@ export default function DashboardPage() {
    * DATA
    * =========================================================
    *
-   * Universidades → Supabase
-   * Eventos       → Supabase
-   *
-   * Estudiantes y fotografías todavía usan temporalmente
-   * el store mientras hacemos su migración.
+   * Universidades, eventos, estudiantes y fotografías
+   * vienen todos de Supabase. Ya no depende del store.
    */
-
-  const store = useStore()
 
   const {
     events,
@@ -66,10 +61,18 @@ export default function DashboardPage() {
   } = useEvents()
 
   const {
-  universities,
-  loading: universitiesLoading,
-  addUniversity,
-} = useUniversities()
+    universities,
+    loading: universitiesLoading,
+    addUniversity,
+  } = useUniversities()
+
+  const {
+    studentsCount,
+    photosCount,
+    loading: statsLoading,
+  } = useDashboardStats()
+
+  const { getCounts } = useEventCounts()
 
   /*
    * =========================================================
@@ -200,14 +203,14 @@ export default function DashboardPage() {
 
         <StatCard
           label="Estudiantes"
-          value={store.students.length}
+          value={statsLoading ? 0 : studentsCount}
           hint="asociados"
           icon={Users}
         />
 
         <StatCard
           label="Fotografías"
-          value={store.photos.length}
+          value={statsLoading ? 0 : photosCount}
           hint="cargadas"
           icon={Images}
         />
@@ -285,14 +288,12 @@ export default function DashboardPage() {
                       )
 
                     /*
-                     * Los estudiantes todavía están
-                     * temporalmente en el store.
+                     * Conteo real desde Supabase,
+                     * agregado en el cliente por useEventCounts.
                      */
 
-                    const studentCount =
-                      store.studentsByEvent(
-                        ev.id,
-                      ).length
+                    const { studentCount } =
+                      getCounts(ev.id)
 
                     return (
 

@@ -9,7 +9,6 @@ import {
   Plus,
 } from "lucide-react"
 
-import { useStore } from "@/lib/store"
 import { useUniversities } from "@/hooks/use-universities"
 
 import { PageHeader } from "@/components/shared/page-header"
