@@ -16,8 +16,8 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 
-import { useStore } from "@/lib/store"
 import { useUniversities } from "@/hooks/use-universities"
+import { useEvents } from "@/hooks/use-events"
 
 interface Crumb {
   label: string
@@ -29,11 +29,11 @@ export function AppHeader() {
 
   /*
    * =========================================================
-   * UNIVERSIDADES & STORE
+   * UNIVERSIDADES & EVENTOS
    * =========================================================
    */
   const { universities } = useUniversities()
-  const store = useStore() // Se mantiene porque se usa para obtener el Evento
+  const { events } = useEvents()
 
   /*
    * =========================================================
@@ -98,7 +98,7 @@ export function AppHeader() {
         return [{ label: "Eventos" }]
       }
 
-      const event = store.getEvent(id)
+      const event = events.find((item) => item.id === id)
 
       if (event) {
         return [
@@ -125,7 +125,7 @@ export function AppHeader() {
      * =======================================================
      */
     return [{ label: "Dashboard" }]
-  }, [pathname, universities, store])
+  }, [pathname, universities, events])
 
   /*
    * =========================================================

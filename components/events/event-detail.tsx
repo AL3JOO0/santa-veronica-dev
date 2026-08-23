@@ -16,9 +16,9 @@ import {
 } from "lucide-react"
 
 import { toast } from "sonner"
-import { useStore } from "@/lib/store"
 import { useUniversities } from "@/hooks/use-universities"
 import { useEvents } from "@/hooks/use-events"
+import { useEventPhotoCount } from "@/hooks/use-event-photo-count"
 
 import { PageHeader } from "@/components/shared/page-header"
 import { NotFoundState } from "@/components/shared/not-found-state"
@@ -38,12 +38,9 @@ interface Props {
 export function EventDetail({ id }: Props) {
   /*
    * =========================================================
-   * STORE & HOOKS
+   * HOOKS
    * =========================================================
    */
-  const store = useStore()
-  const { photos } = store
-
   const {
     universities,
     loading: universitiesLoading,
@@ -84,10 +81,12 @@ export function EventDetail({ id }: Props) {
 
   const eventStudents = students
 
-  const eventPhotos = useMemo(() => {
-    const studentIds = new Set(eventStudents.map((student) => student.id))
-    return photos.filter((photo) => studentIds.has(photo.studentId))
-  }, [photos, eventStudents])
+  const studentIds = useMemo(
+    () => eventStudents.map((s) => s.id),
+    [eventStudents],
+  )
+
+  const { count: photoCount } = useEventPhotoCount(studentIds)
 
   /*
    * =========================================================
@@ -419,7 +418,7 @@ export function EventDetail({ id }: Props) {
               
               <div className="grid grid-cols-2 gap-4">
                 <Metric icon={Users} value={eventStudents.length} label="Estudiantes" />
-                <Metric icon={ImageIcon} value={eventPhotos.length} label="Fotografías" />
+                <Metric icon={ImageIcon} value={photoCount} label="Fotografías" />
               </div>
 
               <div className="rounded-lg bg-muted/40 p-4 mt-2">
@@ -430,9 +429,9 @@ export function EventDetail({ id }: Props) {
                   </strong>{" "}
                   estudiante{eventStudents.length !== 1 && "s"} y{" "}
                   <strong className="font-medium text-foreground">
-                    {eventPhotos.length}
+                    {photoCount}
                   </strong>{" "}
-                  fotografía{eventPhotos.length !== 1 && "s"} en el sistema.
+                  fotografía{photoCount !== 1 && "s"} en el sistema.
                 </p>
               </div>
             </CardContent>
@@ -466,15 +465,15 @@ export function EventDetail({ id }: Props) {
       />
 
       <BulkStudentDialog
-  open={bulkDialogOpen}
-  onOpenChange={setBulkDialogOpen}
-  eventId={id}
-  existingDocuments={eventStudents.map((s) => s.documentNumber)}
-  onBulkCreate={bulkAddStudents}
-  onSaved={async () => {
-    await reloadStudents()
-  }}
-/>
+        open={bulkDialogOpen}
+        onOpenChange={setBulkDialogOpen}
+        eventId={id}
+        existingDocuments={eventStudents.map((s) => s.documentNumber)}
+        onBulkCreate={bulkAddStudents}
+        onSaved={async () => {
+          await reloadStudents()
+        }}
+      />
 
       <ConfirmDialog
         open={!!deletingEvent}
