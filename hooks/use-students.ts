@@ -89,22 +89,14 @@ export function useStudents(
       },
       [],
     )
-    const bulkAddStudents =
+  const bulkAddStudents =
     React.useCallback(
-      async (
-        students: BulkCreateStudentInput[],
-      ) => {
-        const created =
-          await createStudentsBulk(students)
-
-        setStudents((prev) => [
-          ...created,
-          ...prev,
-        ])
-
-        return created
+      async (students: BulkCreateStudentInput[]) => {
+        const result = await createStudentsBulk(students)
+        await loadStudents()
+        return result
       },
-      [],
+      [loadStudents],
     )
   /**
    * Actualizar estudiante.

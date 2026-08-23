@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-
 import {
   APP_SESSION_COOKIE,
   createAppSessionToken,
@@ -9,21 +8,118 @@ import {
   createSupabaseAdminClient,
   createSupabasePasswordClient,
 } from '@/lib/server/supabase-admin'
+import {
+  normalizeDocumentNumber,
+  verifyStudentPassword,
+} from '@/lib/server/student-password'
 
 export const runtime = 'nodejs'
 
 function normalizeIdentifier(value: string) {
   const trimmed = value.trim()
-
-  if (/^[\d.\-\s]+$/.test(trimmed)) {
-    return trimmed.replace(/\D/g, '')
-  }
-
+  if (/^[\d.\-\s]+$/.test(trimmed)) return normalizeDocumentNumber(trimmed)
   return trimmed.toLowerCase()
 }
 
 function isValidIdentifier(value: string) {
   return /^[a-z0-9._-]{3,100}$/.test(value)
+}
+
+async function loginAdministrator(
+  identifier: string,
+  password: string,
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+) {
+  const { data: access, error: accessError } = await admin
+    .from('usuarios_acceso')
+    .select('auth_user_id, identificador, tipo_usuario, id_usuario, activo')
+    .eq('identificador', identifier)
+    .eq('activo', true)
+    .maybeSingle()
+
+  if (accessError) {
+    console.error('Error consultando usuarios_acceso:', accessError)
+    throw new Error('No fue posible validar el acceso administrativo.')
+  }
+
+  if (!access || access.tipo_usuario !== 'ADMINISTRADOR' || !access.auth_user_id || !access.id_usuario) return null
+
+  const { data: authUserData, error: authUserError } = await admin.auth.admin.getUserById(access.auth_user_id)
+  const email = authUserData?.user?.email
+  if (authUserError || !email) return null
+
+  const passwordClient = createSupabasePasswordClient()
+  const { data: signInData, error: signInError } = await passwordClient.auth.signInWithPassword({ email, password })
+  if (signInError || !signInData.user || signInData.user.id !== access.auth_user_id) return null
+
+  const { data: userProfile, error: userError } = await admin
+    .from('users')
+    .select('id, name, email, role, active')
+    .eq('id', access.id_usuario)
+    .maybeSingle()
+
+  if (userError || !userProfile?.active) return null
+
+  const sessionData: Omit<AppSession, 'expiresAt'> = {
+    authUserId: access.auth_user_id,
+    profileId: userProfile.id,
+    identifier,
+    userType: 'ADMINISTRADOR',
+    displayName: userProfile.name,
+    role: userProfile.role,
+  }
+
+  return { sessionData, redirectTo: '/' }
+}
+
+async function loginStudent(
+  identifier: string,
+  password: string,
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+) {
+  const documentNumber = normalizeDocumentNumber(identifier)
+  if (!documentNumber) return null
+
+  const { data: studentRows, error: studentError } = await admin
+    .from('students')
+    .select('id, event_id, document_number, first_name, last_name, status, password_hash')
+    .eq('document_number', documentNumber)
+    .limit(2)
+
+  if (studentError) {
+    console.error('Error consultando estudiante:', studentError)
+    throw new Error('No fue posible validar el acceso del estudiante.')
+  }
+
+  if (!studentRows || studentRows.length === 0) return null
+  if (studentRows.length > 1) {
+    console.error(`Documento duplicado en students: ${documentNumber}`)
+    throw new Error('El documento está duplicado en la base de datos. Contacta al administrador.')
+  }
+
+  const student = studentRows[0]
+  if (!student.password_hash) return null
+  if (!(await verifyStudentPassword(password, student.password_hash))) return null
+
+  const { data: event, error: eventError } = await admin
+    .from('events')
+    .select('name')
+    .eq('id', student.event_id)
+    .maybeSingle()
+
+  if (eventError) console.error('Error obteniendo evento del estudiante:', eventError)
+
+  const sessionData: Omit<AppSession, 'expiresAt'> = {
+    profileId: student.id,
+    identifier: documentNumber,
+    userType: 'ESTUDIANTE',
+    displayName: `${student.first_name} ${student.last_name}`.trim(),
+    documentNumber: student.document_number,
+    eventName: event?.name || 'Galería personal',
+    studentStatus: student.status,
+  }
+
+  return { sessionData, redirectTo: '/cliente/galeria' }
 }
 
 export async function POST(request: NextRequest) {
@@ -37,170 +133,35 @@ export async function POST(request: NextRequest) {
     const remember = Boolean(body?.remember)
 
     if (!identifier || !password) {
-      return NextResponse.json(
-        { ok: false, message: 'Ingresa el usuario o cédula y la contraseña.' },
-        { status: 400 },
-      )
+      return NextResponse.json({ ok: false, message: 'Ingresa el usuario o cédula y la contraseña.' }, { status: 400 })
     }
 
     if (!isValidIdentifier(identifier)) {
-      return NextResponse.json(
-        { ok: false, message: 'Usuario o contraseña incorrectos.' },
-        { status: 401 },
-      )
+      return NextResponse.json({ ok: false, message: 'Usuario o contraseña incorrectos.' }, { status: 401 })
     }
 
     const admin = createSupabaseAdminClient()
+    const adminResult = await loginAdministrator(identifier, password, admin)
+    const result = adminResult || (await loginStudent(identifier, password, admin))
 
-    const { data: access, error: accessError } = await admin
-      .from('usuarios_acceso')
-      .select(
-        'auth_user_id, identificador, tipo_usuario, id_usuario, id_estudiante, activo',
-      )
-      .eq('identificador', identifier)
-      .eq('activo', true)
-      .maybeSingle()
-
-    if (accessError) {
-      console.error('Error consultando usuarios_acceso:', accessError)
-      return NextResponse.json(
-        { ok: false, message: 'No fue posible validar el acceso.' },
-        { status: 500 },
-      )
+    if (!result) {
+      return NextResponse.json({ ok: false, message: 'Usuario o contraseña incorrectos.' }, { status: 401 })
     }
 
-    if (!access?.auth_user_id) {
-      return NextResponse.json(
-        { ok: false, message: 'Usuario o contraseña incorrectos.' },
-        { status: 401 },
-      )
-    }
-
-    const { data: authUserData, error: authUserError } =
-      await admin.auth.admin.getUserById(access.auth_user_id)
-
-    const email = authUserData?.user?.email
-
-    if (authUserError || !email) {
-      console.error('Error obteniendo usuario de Supabase Auth:', authUserError)
-      return NextResponse.json(
-        { ok: false, message: 'Usuario o contraseña incorrectos.' },
-        { status: 401 },
-      )
-    }
-
-    const passwordClient = createSupabasePasswordClient()
-    const { data: signInData, error: signInError } =
-      await passwordClient.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-    if (
-      signInError ||
-      !signInData.user ||
-      signInData.user.id !== access.auth_user_id
-    ) {
-      return NextResponse.json(
-        { ok: false, message: 'Usuario o contraseña incorrectos.' },
-        { status: 401 },
-      )
-    }
-
-    let sessionData: Omit<AppSession, 'expiresAt'>
-    let redirectTo = '/'
-
-    if (access.tipo_usuario === 'ADMINISTRADOR') {
-      if (!access.id_usuario) {
-        return NextResponse.json(
-          { ok: false, message: 'El usuario no tiene un perfil administrativo asociado.' },
-          { status: 403 },
-        )
-      }
-
-      const { data: userProfile, error: userError } = await admin
-        .from('users')
-        .select('id, name, email, role, active')
-        .eq('id', access.id_usuario)
-        .maybeSingle()
-
-      if (userError || !userProfile?.active) {
-        return NextResponse.json(
-          { ok: false, message: 'El usuario administrativo está inactivo o no existe.' },
-          { status: 403 },
-        )
-      }
-
-      sessionData = {
-        authUserId: access.auth_user_id,
-        profileId: userProfile.id,
-        identifier,
-        userType: 'ADMINISTRADOR',
-        displayName: userProfile.name,
-        role: userProfile.role,
-      }
-    } else if (access.tipo_usuario === 'ESTUDIANTE') {
-      if (!access.id_estudiante) {
-        return NextResponse.json(
-          { ok: false, message: 'El usuario no tiene un estudiante asociado.' },
-          { status: 403 },
-        )
-      }
-
-      const { data: student, error: studentError } = await admin
-        .from('students')
-        .select(
-          'id, event_id, document_number, first_name, last_name, status',
-        )
-        .eq('id', access.id_estudiante)
-        .maybeSingle()
-
-      if (studentError || !student) {
-        return NextResponse.json(
-          { ok: false, message: 'El estudiante asociado no existe.' },
-          { status: 403 },
-        )
-      }
-
-      const { data: event } = await admin
-        .from('events')
-        .select('name')
-        .eq('id', student.event_id)
-        .maybeSingle()
-
-      sessionData = {
-        authUserId: access.auth_user_id,
-        profileId: student.id,
-        identifier,
-        userType: 'ESTUDIANTE',
-        displayName: `${student.first_name} ${student.last_name}`.trim(),
-        documentNumber: student.document_number,
-        eventName: event?.name || 'Galería personal',
-        studentStatus: student.status,
-      }
-      redirectTo = '/cliente/galeria'
-    } else {
-      return NextResponse.json(
-        { ok: false, message: 'Tipo de usuario no reconocido.' },
-        { status: 403 },
-      )
-    }
-
-    const { token, maxAge } = createAppSessionToken(sessionData, remember)
-
+    const { token, maxAge } = createAppSessionToken(result.sessionData, remember)
     const response = NextResponse.json({
       ok: true,
       session: {
-        profileId: sessionData.profileId,
-        identifier: sessionData.identifier,
-        userType: sessionData.userType,
-        displayName: sessionData.displayName,
-        role: sessionData.role,
-        documentNumber: sessionData.documentNumber,
-        eventName: sessionData.eventName,
-        studentStatus: sessionData.studentStatus,
+        profileId: result.sessionData.profileId,
+        identifier: result.sessionData.identifier,
+        userType: result.sessionData.userType,
+        displayName: result.sessionData.displayName,
+        role: result.sessionData.role,
+        documentNumber: result.sessionData.documentNumber,
+        eventName: result.sessionData.eventName,
+        studentStatus: result.sessionData.studentStatus,
       },
-      redirectTo,
+      redirectTo: result.redirectTo,
     })
 
     response.cookies.set({
@@ -212,19 +173,14 @@ export async function POST(request: NextRequest) {
       path: '/',
       maxAge,
     })
-
     return response
   } catch (error) {
     console.error('Error en login unificado:', error)
-    return NextResponse.json(
-      {
-        ok: false,
-        message:
-          error instanceof Error && error.message.includes('variable de entorno')
-            ? error.message
-            : 'No fue posible iniciar sesión en este momento.',
-      },
-      { status: 500 },
-    )
+    const message =
+      error instanceof Error &&
+      (error.message.includes('variable de entorno') || error.message.includes('duplicado'))
+        ? error.message
+        : 'No fue posible iniciar sesión en este momento.'
+    return NextResponse.json({ ok: false, message }, { status: 500 })
   }
 }

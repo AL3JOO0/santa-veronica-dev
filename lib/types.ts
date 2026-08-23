@@ -40,7 +40,6 @@ export interface Student {
   status: StudentStatus
   createdAt: string
   updatedAt: string
-  authUserId: string | null
 }
 
 export interface Photo {
