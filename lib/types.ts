@@ -1,4 +1,12 @@
-export type Status = 'activo' | 'archivado' | 'borrador'
+export type Status =
+  | 'activo'
+  | 'borrador'
+  | 'cerrado'
+  | 'archivado'
+  export type StudentStatus =
+  | 'PENDING'
+  | 'SELECTION_IN_PROGRESS'
+  | 'SELECTION_SENT'
 
 export interface University {
   id: string
@@ -17,29 +25,33 @@ export interface EventItem {
   name: string
   description: string
   date: string
-  cover: string
   status: Status
   createdAt: string
+  updatedAt: string | null
 }
 
 export interface Student {
   id: string
   eventId: string
+  documentNumber: string
   firstName: string
   lastName: string
-  code: string
-  program: string
-  email: string
-  status: Status
+  email: string | null
+  status: StudentStatus
   createdAt: string
+  updatedAt: string
+  authUserId: string | null
 }
 
 export interface Photo {
   id: string
   studentId: string
-  fileName: string
-  url: string
-  uploadedAt: string
+  storageKey: string
+  thumbnailKey: string | null
+  originalFilename: string
+  mimeType: string
+  fileSize: number
+  createdAt: string
 }
 
 export type ActivityType =

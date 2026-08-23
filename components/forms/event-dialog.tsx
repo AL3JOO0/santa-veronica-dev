@@ -1,9 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
 import { toast } from 'sonner'
-import { Check } from 'lucide-react'
+
 import {
   Dialog,
   DialogContent,
@@ -12,10 +11,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+
 import {
   Select,
   SelectContent,
@@ -23,21 +29,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useStore } from '@/lib/store'
-import { cn } from '@/lib/utils'
-import type { EventItem, Status } from '@/lib/types'
 
-const COVERS = [
-  { url: '/covers/graduacion.png', label: 'Graduación' },
-  { url: '/covers/ceremonia.png', label: 'Ceremonia' },
-  { url: '/covers/campus.png', label: 'Campus' },
-]
+import { createEventAction } from '@/app/actions/events'
+
+import { useUniversities } from '@/hooks/use-universities'
+import { useEvents } from '@/hooks/use-events'
+
+
+import type {
+  EventItem,
+  Status,
+} from '@/lib/types'
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
-  event?: EventItem
+
+  event?: EventItem | null
+
   defaultUniversityId?: string
+
+  /*
+   * Se ejecuta después de crear o editar
+   * correctamente el evento.
+   */
+  onSaved?: () => void | Promise<void>
 }
 
 export function EventDialog({
@@ -45,176 +61,610 @@ export function EventDialog({
   onOpenChange,
   event,
   defaultUniversityId,
+  onSaved,
 }: Props) {
-  const store = useStore()
-  const editing = Boolean(event)
 
-  const [name, setName] = React.useState('')
-  const [universityId, setUniversityId] = React.useState('')
-  const [date, setDate] = React.useState('')
-  const [description, setDescription] = React.useState('')
-  const [cover, setCover] = React.useState(COVERS[0].url)
-  const [status, setStatus] = React.useState<Status>('activo')
+  /*
+   * =========================================================
+   * UNIVERSIDADES
+   * =========================================================
+   */
 
-  React.useEffect(() => {
-    if (open) {
-      setName(event?.name ?? '')
-      setUniversityId(event?.universityId ?? defaultUniversityId ?? '')
-      setDate(event?.date ?? '')
-      setDescription(event?.description ?? '')
-      setCover(event?.cover ?? COVERS[0].url)
-      setStatus(event?.status ?? 'activo')
-    }
-  }, [open, event, defaultUniversityId])
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!name.trim()) return toast.error('El nombre es obligatorio')
-    if (!universityId) return toast.error('Selecciona una universidad')
-    if (!date) return toast.error('La fecha es obligatoria')
-
-    const payload = {
-      name: name.trim(),
-      universityId,
-      date,
-      description: description.trim(),
-      cover,
-      status,
-    }
-    if (editing && event) {
-      store.updateEvent(event.id, payload)
-      toast.success('Evento actualizado')
-    } else {
-      store.addEvent(payload)
-      toast.success('Evento creado')
-    }
-    onOpenChange(false)
+  const {
+  universities,
+  loading: universitiesLoading,
+  reload: reloadUniversities,
+} = useUniversities()
+React.useEffect(() => {
+  if (!open) {
+    return
   }
 
+  reloadUniversities()
+}, [open, reloadUniversities])
+
+  /*
+   * =========================================================
+   * EVENTOS
+   * =========================================================
+   *
+   * Utilizamos editEvent() para actualizar eventos.
+   */
+
+  const {
+    editEvent,
+  } = useEvents()
+
+  /*
+   * =========================================================
+   * ESTADO
+   * =========================================================
+   */
+
+  const editing = Boolean(event)
+
+  const [name, setName] =
+    React.useState('')
+
+  const [universityId, setUniversityId] =
+    React.useState('')
+
+  const [date, setDate] =
+    React.useState('')
+
+  const [description, setDescription] =
+    React.useState('')
+
+  const [password, setPassword] =
+    React.useState('')
+
+  const [status, setStatus] =
+    React.useState<Status>('activo')
+
+  const [saving, setSaving] =
+    React.useState(false)
+
+  /*
+   * =========================================================
+   * CARGAR DATOS DEL EVENTO
+   * =========================================================
+   */
+
+  React.useEffect(() => {
+
+    if (!open) {
+      return
+    }
+
+    /*
+     * Si estamos editando,
+     * cargamos los datos existentes.
+     */
+
+    if (event) {
+
+      setName(
+        event.name ?? '',
+      )
+
+      setUniversityId(
+        event.universityId ?? '',
+      )
+
+      setDate(
+        event.date ?? '',
+      )
+
+      setDescription(
+        event.description ?? '',
+      )
+
+      setStatus(
+        event.status ?? 'activo',
+      )
+
+    }
+
+    /*
+     * Si estamos creando,
+     * utilizamos la universidad por defecto.
+     */
+
+    else {
+
+      setName('')
+
+      setUniversityId(
+        defaultUniversityId ?? '',
+      )
+
+      setDate('')
+
+      setDescription('')
+
+      setStatus('activo')
+
+    }
+
+    /*
+     * La contraseña nunca se carga.
+     */
+
+    setPassword('')
+
+  }, [
+    open,
+    event,
+    defaultUniversityId,
+  ])
+
+  /*
+   * =========================================================
+   * SUBMIT
+   * =========================================================
+   */
+
+  const handleSubmit = async (
+    e: React.FormEvent,
+  ) => {
+
+    e.preventDefault()
+
+    /*
+     * =======================================================
+     * VALIDACIONES
+     * =======================================================
+     */
+
+    if (!name.trim()) {
+
+      toast.error(
+        'El nombre del evento es obligatorio.',
+      )
+
+      return
+    }
+
+    if (!universityId) {
+
+      toast.error(
+        'Selecciona una universidad.',
+      )
+
+      return
+    }
+
+    if (!date) {
+
+      toast.error(
+        'La fecha del evento es obligatoria.',
+      )
+
+      return
+    }
+
+    /*
+     * La contraseña solamente es obligatoria
+     * cuando estamos creando.
+     */
+
+    if (
+      !editing &&
+      !password.trim()
+    ) {
+
+      toast.error(
+        'La contraseña de cohorte es obligatoria.',
+      )
+
+      return
+    }
+
+    try {
+
+      setSaving(true)
+
+      /*
+       * =====================================================
+       * EDITAR EVENTO
+       * =====================================================
+       */
+
+      if (editing && event) {
+
+        await editEvent(
+          event.id,
+          {
+            universityId,
+            name: name.trim(),
+            description:
+              description.trim(),
+            date,
+            status,
+
+            /*
+             * Si está vacío, el servicio no
+             * cambia la contraseña.
+             */
+
+            password:
+              password.trim() ||
+              undefined,
+          },
+        )
+
+        toast.success(
+          'Evento actualizado correctamente.',
+        )
+      }
+
+      /*
+       * =====================================================
+       * CREAR EVENTO
+       * =====================================================
+       */
+
+      else {
+
+        await createEventAction({
+          name: name.trim(),
+
+          universityId,
+
+          date,
+
+          description:
+            description.trim(),
+
+          password:
+            password.trim(),
+
+          status,
+        })
+
+        toast.success(
+          'Evento creado correctamente.',
+        )
+      }
+
+      /*
+       * Limpiamos la contraseña.
+       */
+
+      setPassword('')
+
+      /*
+       * Cerramos el diálogo.
+       */
+
+      onOpenChange(false)
+
+      /*
+       * Avisamos al padre para que
+       * actualice la información.
+       */
+
+      await onSaved?.()
+
+    } catch (error) {
+
+      console.error(
+        'Error guardando evento:',
+        error,
+      )
+
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo guardar el evento.',
+      )
+
+    } finally {
+
+      setSaving(false)
+
+    }
+  }
+
+  /*
+   * =========================================================
+   * RENDER
+   * =========================================================
+   */
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+    >
+
       <DialogContent className="sm:max-w-lg">
-        <form onSubmit={handleSubmit}>
+
+        <form
+          onSubmit={handleSubmit}
+        >
+
+          {/* =================================================
+              HEADER
+              ================================================= */}
+
           <DialogHeader>
+
             <DialogTitle>
-              {editing ? 'Editar evento' : 'Nuevo evento'}
+              {editing
+                ? 'Editar evento'
+                : 'Nuevo evento'}
             </DialogTitle>
+
             <DialogDescription>
               {editing
                 ? 'Actualiza la información del evento.'
                 : 'Crea un nuevo evento dentro de una universidad.'}
             </DialogDescription>
+
           </DialogHeader>
 
           <FieldGroup className="py-4">
+
+            {/* =================================================
+                NOMBRE
+                ================================================= */}
+
             <Field>
-              <FieldLabel htmlFor="ev-name">Nombre del evento</FieldLabel>
+
+              <FieldLabel htmlFor="ev-name">
+                Nombre del evento
+              </FieldLabel>
+
               <Input
                 id="ev-name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) =>
+                  setName(
+                    e.target.value,
+                  )
+                }
                 placeholder="Graduación 2026"
                 autoFocus
+                disabled={saving}
               />
+
             </Field>
+
+            {/* =================================================
+                UNIVERSIDAD + FECHA
+                ================================================= */}
+
             <div className="grid gap-4 sm:grid-cols-2">
+
               <Field>
-                <FieldLabel>Universidad</FieldLabel>
-                <Select value={universityId} onValueChange={setUniversityId}>
+
+                <FieldLabel>
+                  Universidad
+                </FieldLabel>
+
+                <Select
+                  value={universityId}
+                  onValueChange={
+                    setUniversityId
+                  }
+                  disabled={
+                    universitiesLoading ||
+                    saving
+                  }
+                >
+
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Seleccionar" />
+
+                    <SelectValue
+                      placeholder={
+                        universitiesLoading
+                          ? 'Cargando...'
+                          : 'Seleccionar'
+                      }
+                    />
+
                   </SelectTrigger>
+
                   <SelectContent>
-                    {store.universities.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.name}
-                      </SelectItem>
-                    ))}
+
+                    {universities.map(
+                      (university) => (
+
+                        <SelectItem
+                          key={
+                            university.id
+                          }
+                          value={
+                            university.id
+                          }
+                        >
+                          {
+                            university.name
+                          }
+                        </SelectItem>
+
+                      ),
+                    )}
+
                   </SelectContent>
+
                 </Select>
+
               </Field>
+
               <Field>
-                <FieldLabel htmlFor="ev-date">Fecha</FieldLabel>
+
+                <FieldLabel htmlFor="ev-date">
+                  Fecha
+                </FieldLabel>
+
                 <Input
                   id="ev-date"
                   type="date"
                   value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  onChange={(e) =>
+                    setDate(
+                      e.target.value,
+                    )
+                  }
+                  disabled={saving}
                 />
+
               </Field>
+
             </div>
+
+            {/* =================================================
+                DESCRIPCIÓN
+                ================================================= */}
+
             <Field>
-              <FieldLabel htmlFor="ev-desc">Descripción</FieldLabel>
+
+              <FieldLabel htmlFor="ev-desc">
+                Descripción
+              </FieldLabel>
+
               <Textarea
                 id="ev-desc"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) =>
+                  setDescription(
+                    e.target.value,
+                  )
+                }
                 placeholder="Detalles del evento"
-                rows={2}
+                rows={3}
+                disabled={saving}
               />
+
             </Field>
+
+            {/* =================================================
+                CONTRASEÑA
+                ================================================= */}
+
             <Field>
-              <FieldLabel>Imagen de portada</FieldLabel>
-              <div className="grid grid-cols-3 gap-2">
-                {COVERS.map((c) => (
-                  <button
-                    key={c.url}
-                    type="button"
-                    onClick={() => setCover(c.url)}
-                    className={cn(
-                      'group relative aspect-video overflow-hidden rounded-lg ring-2 ring-transparent transition-all',
-                      cover === c.url && 'ring-primary',
-                    )}
-                    aria-label={`Portada ${c.label}`}
-                  >
-                    <Image
-                      src={c.url || '/placeholder.svg'}
-                      alt={c.label}
-                      fill
-                      sizes="150px"
-                      className="object-cover"
-                    />
-                    {cover === c.url && (
-                      <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                        <Check className="size-3" />
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
+
+              <FieldLabel htmlFor="ev-password">
+                Contraseña de cohorte
+              </FieldLabel>
+
+              <Input
+                id="ev-password"
+                type="password"
+                value={password}
+                onChange={(e) =>
+                  setPassword(
+                    e.target.value,
+                  )
+                }
+                placeholder={
+                  editing
+                    ? 'Dejar vacío para conservar la actual'
+                    : 'Contraseña para acceder a la cohorte'
+                }
+                disabled={saving}
+              />
+
+              <p className="text-xs text-muted-foreground">
+
+                {editing
+                  ? 'Déjala vacía para conservar la contraseña actual.'
+                  : 'La contraseña se almacenará de forma segura mediante un hash.'}
+
+              </p>
+
             </Field>
+
+            {/* =================================================
+                ESTADO
+                ================================================= */}
+
             <Field>
-              <FieldLabel>Estado</FieldLabel>
+
+              <FieldLabel>
+                Estado
+              </FieldLabel>
+
               <Select
                 value={status}
-                onValueChange={(v) => setStatus(v as Status)}
+                onValueChange={(value) =>
+                  setStatus(
+                    value as Status,
+                  )
+                }
+                disabled={saving}
               >
+
                 <SelectTrigger className="w-full">
+
                   <SelectValue />
+
                 </SelectTrigger>
+
                 <SelectContent>
-                  <SelectItem value="activo">Activo</SelectItem>
-                  <SelectItem value="borrador">Borrador</SelectItem>
-                  <SelectItem value="archivado">Archivado</SelectItem>
+
+                  <SelectItem value="activo">
+                    Activo
+                  </SelectItem>
+
+                  <SelectItem value="borrador">
+                    Borrador
+                  </SelectItem>
+
+                  <SelectItem value="cerrado">
+                    Cerrado
+                  </SelectItem>
+
+                  <SelectItem value="archivado">
+                    Archivado
+                  </SelectItem>
+
                 </SelectContent>
+
               </Select>
+
             </Field>
+
           </FieldGroup>
 
+          {/* =================================================
+              FOOTER
+              ================================================= */}
+
           <DialogFooter>
+
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() =>
+                onOpenChange(false)
+              }
+              disabled={saving}
             >
               Cancelar
             </Button>
-            <Button type="submit">
-              {editing ? 'Guardar cambios' : 'Crear evento'}
+
+            <Button
+              type="submit"
+              disabled={saving}
+            >
+
+              {saving
+                ? 'Guardando...'
+                : editing
+                  ? 'Guardar cambios'
+                  : 'Crear evento'}
+
             </Button>
+
           </DialogFooter>
+
         </form>
+
       </DialogContent>
+
     </Dialog>
   )
 }
