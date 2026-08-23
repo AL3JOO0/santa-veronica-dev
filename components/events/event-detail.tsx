@@ -1,16 +1,19 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState, type ChangeEvent } from "react"
 import Link from "next/link"
 import { useStudents } from "@/hooks/use-students"
 
 import {
   ArrowLeft,
   CalendarDays,
+  Download,
   ImageIcon,
+  Loader2,
   MapPin,
   Pencil,
   Plus,
+  Upload,
   Users,
 } from "lucide-react"
 
@@ -26,6 +29,8 @@ import { EventDialog } from "@/components/forms/event-dialog"
 import { StudentDialog } from "@/components/forms/student-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { downloadStudentTemplate, parseStudentFile } from "@/lib/services/students-template"
+import { importStudentsBulk } from "@/lib/services/students.service"
 
 import type { EventItem, Student } from "@/lib/types"
 
@@ -95,6 +100,9 @@ export function EventDetail({ id }: Props) {
   const [studentDialogOpen, setStudentDialogOpen] = useState(false)
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
   const [deletingEvent, setDeletingEvent] = useState<EventItem | null>(null)
+  const [importingStudents, setImportingStudents] = useState(false)
+  const [importProgress, setImportProgress] = useState({ processed: 0, total: 0 })
+  const studentFileInputRef = useRef<HTMLInputElement>(null)
 
   /*
    * =========================================================
@@ -113,6 +121,49 @@ export function EventDetail({ id }: Props) {
   function openEditStudent(student: Student) {
     setEditingStudent(student)
     setStudentDialogOpen(true)
+  }
+
+  async function handleStudentImport(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      setImportingStudents(true)
+      setImportProgress({ processed: 0, total: 0 })
+      const rows = await parseStudentFile(file)
+
+      if (rows.length === 0) throw new Error('El archivo no contiene estudiantes para importar.')
+
+      const invalidRows = rows.filter((row) => row.errors.length > 0)
+      if (invalidRows.length > 0) {
+        const first = invalidRows[0]
+        throw new Error(`Hay ${invalidRows.length} fila(s) con errores. Fila ${first.row}: ${first.errors.join(', ')}`)
+      }
+
+      setImportProgress({ processed: 0, total: rows.length })
+      const result = await importStudentsBulk(
+        id,
+        rows.map((row) => ({
+          documentNumber: row.documentNumber,
+          firstName: row.firstName,
+          lastName: row.lastName,
+          email: row.email,
+          password: row.password,
+          status: row.status,
+        })),
+        (processed, total) => setImportProgress({ processed, total }),
+      )
+
+      toast.success(`Importación completada: ${result.created} nuevo(s) y ${result.updated} actualizado(s).`)
+      await reloadStudents()
+    } catch (error) {
+      console.error('Error importando estudiantes:', error)
+      toast.error(error instanceof Error ? error.message : 'No se pudo importar el archivo de estudiantes.')
+    } finally {
+      setImportingStudents(false)
+      setImportProgress({ processed: 0, total: 0 })
+      if (studentFileInputRef.current) studentFileInputRef.current.value = ''
+    }
   }
 
   async function handleDeleteEvent() {
@@ -275,10 +326,39 @@ export function EventDetail({ id }: Props) {
                     Directorio de estudiantes registrados en el evento.
                   </p>
                 </div>
-                <Button onClick={openCreateStudent}>
-                  <Plus className="mr-2 size-4" />
-                  Agregar estudiante
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={downloadStudentTemplate} disabled={importingStudents}>
+                    <Download className="mr-2 size-4" />
+                    Plantilla
+                  </Button>
+                  <input
+                    ref={studentFileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={handleStudentImport}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => studentFileInputRef.current?.click()}
+                    disabled={importingStudents}
+                  >
+                    {importingStudents ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                    ) : (
+                      <Upload className="mr-2 size-4" />
+                    )}
+                    {importingStudents
+                      ? importProgress.total > 0
+                        ? `Importando ${importProgress.processed}/${importProgress.total}`
+                        : 'Leyendo archivo...'
+                      : 'Importar Excel'}
+                  </Button>
+                  <Button onClick={openCreateStudent} disabled={importingStudents}>
+                    <Plus className="mr-2 size-4" />
+                    Agregar estudiante
+                  </Button>
+                </div>
               </div>
 
               {studentsLoading ? (
