@@ -215,4 +215,5 @@ export async function deleteStudent(
 
     throw new Error(error.message)
   }
+    
 }

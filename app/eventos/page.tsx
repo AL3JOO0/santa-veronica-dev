@@ -39,6 +39,7 @@ export default function EventosPage() {
   universities,
   loading: universitiesLoading,
   error: universitiesError,
+  reload: reloadUniversities,
 } = useUniversities()
   /*
    * =========================================================
@@ -101,7 +102,10 @@ export default function EventosPage() {
       events,
       query,
     ])
-
+    function openCreateEvent() {
+  setEditingEvent(undefined)
+  setEventDialogOpen(true)
+  }
   /*
    * =========================================================
    * EDITAR EVENTO
@@ -181,7 +185,7 @@ export default function EventosPage() {
    * =========================================================
    */
 
-  if (loading) {
+  if (loading || universitiesLoading) {
 
     return (
       <div className="flex items-center justify-center py-20">
@@ -223,7 +227,28 @@ export default function EventosPage() {
       </div>
     )
   }
+    if (universitiesError) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-20">
 
+      <p className="text-sm text-destructive">
+        No se pudieron cargar las universidades.
+      </p>
+
+      <p className="text-xs text-muted-foreground">
+        {universitiesError}
+      </p>
+
+      <Button
+        variant="outline"
+        onClick={reloadUniversities}
+      >
+        Intentar nuevamente
+      </Button>
+
+    </div>
+  )
+}
   /*
    * =========================================================
    * RENDER
@@ -232,180 +257,92 @@ export default function EventosPage() {
 
   return (
     <div className="flex flex-col gap-6">
-
-      {/* =====================================================
-          HEADER
-          ===================================================== */}
-
       <PageHeader
         title="Eventos"
         description="Gestiona los eventos registrados en el estudio."
         action={
-
-          <Button
-            nativeButton={false}
-            render={
-              <Link href="/universidades" />
-            }
-          >
-            <Plus data-icon="inline-start" />
+          <Button onClick={openCreateEvent}>
+            <Plus className="mr-2 size-4" />
             Nuevo evento
           </Button>
-
         }
       />
 
-      {/* =====================================================
-          BUSCADOR
-          ===================================================== */}
-
-      <div className="flex items-center justify-between gap-3">
-
+      <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-serif text-lg">
           Todos los eventos
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            ({filteredEvents.length})
+          </span>
         </h2>
 
         <SearchInput
           value={query}
           onChange={setQuery}
           placeholder="Buscar evento..."
-          className="max-w-xs"
+          className="w-full sm:max-w-xs"
         />
-
       </div>
 
-      {/* =====================================================
-          LISTA
-          ===================================================== */}
-
       {filteredEvents.length === 0 ? (
-
         <EmptyState
           icon={CalendarDays}
-          title={
-            events.length === 0
-              ? 'No hay eventos'
-              : 'Sin resultados'
-          }
+          title={events.length === 0 ? 'No hay eventos' : 'Sin resultados'}
           description={
             events.length === 0
-              ? 'Crea un evento desde una universidad para comenzar.'
+              ? 'Crea tu primer evento con el botón "Nuevo evento".'
               : 'No hay eventos que coincidan con tu búsqueda.'
           }
         />
-
       ) : (
-
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredEvents.map((event) => {
+            const eventStudents = students.filter(
+              (student) => student.eventId === event.id
+            )
+            const studentIds = new Set(eventStudents.map((s) => s.id))
+            const eventPhotos = photos.filter((photo) =>
+              studentIds.has(photo.studentId)
+            )
+            const university = universities.find(
+              (item) => item.id === event.universityId
+            )
 
-          {filteredEvents.map(
-            (event) => {
-
-              const eventStudents =
-                students.filter(
-                  (student) =>
-                    student.eventId ===
-                    event.id,
-                )
-
-              const studentIds =
-                new Set(
-                  eventStudents.map(
-                    (student) =>
-                      student.id,
-                  ),
-                )
-
-              const eventPhotos =
-                photos.filter(
-                  (photo) =>
-                    studentIds.has(
-                      photo.studentId,
-                    ),
-                )
-                  const university = universities.find(
-  (item) =>
-    item.id === event.universityId,
-)
-              return (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  universityName={
-                  university?.name
-                   }
-                  studentCount={
-                    eventStudents.length
-                  }
-                  photoCount={
-                    eventPhotos.length
-                  }
-                  onEdit={() =>
-                    openEditEvent(event)
-                  }
-                  onDelete={() =>
-                    setDeletingEvent(
-                      event,
-                    )
-                  }
-                />
-              )
-            },
-          )}
-
+            return (
+              <EventCard
+                key={event.id}
+                event={event}
+                universityName={university?.name}
+                studentCount={eventStudents.length}
+                photoCount={eventPhotos.length}
+                onEdit={() => openEditEvent(event)}
+                onDelete={() => setDeletingEvent(event)}
+              />
+            )
+          })}
         </div>
-
       )}
 
-      {/* =====================================================
-          EDITAR EVENTO
-          ===================================================== */}
-
-      {editingEvent ? (
-
-        <EventDialog
-          open={eventDialogOpen}
-          onOpenChange={
-            handleEventDialogChange
-          }
-          event={editingEvent}
-          defaultUniversityId={
-            editingEvent.universityId
-          }
-          onSaved={async () => {
-
-            await reload()
-
-            setEventDialogOpen(false)
-            setEditingEvent(undefined)
-
-          }}
-        />
-
-      ) : null}
-
-      {/* =====================================================
-          ELIMINAR EVENTO
-          ===================================================== */}
+      <EventDialog
+        open={eventDialogOpen}
+        onOpenChange={handleEventDialogChange}
+        event={editingEvent}
+        onSaved={async () => {
+          await reload()
+          setEventDialogOpen(false)
+          setEditingEvent(undefined)
+        }}
+      />
 
       <ConfirmDialog
         open={!!deletingEvent}
         onOpenChange={(open) => {
-
-          if (!open) {
-            setDeletingEvent(null)
-          }
-
+          if (!open) setDeletingEvent(null)
         }}
         title="Eliminar evento"
-        description={
-          `¿Seguro que deseas eliminar "${deletingEvent?.name}"? Se eliminarán sus estudiantes y fotografías.`
-        }
-        onConfirm={
-          handleDeleteEvent
-        }
+        description={`¿Seguro que deseas eliminar "${deletingEvent?.name}"? Se eliminarán sus estudiantes y fotografías.`}
+        onConfirm={handleDeleteEvent}
       />
-
     </div>
   )
 }

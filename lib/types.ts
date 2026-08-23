@@ -46,9 +46,12 @@ export interface Student {
 export interface Photo {
   id: string
   studentId: string
-  fileName: string
-  url: string
-  uploadedAt: string
+  storageKey: string
+  thumbnailKey: string | null
+  originalFilename: string
+  mimeType: string
+  fileSize: number
+  createdAt: string
 }
 
 export type ActivityType =
