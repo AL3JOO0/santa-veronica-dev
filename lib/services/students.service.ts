@@ -52,7 +52,6 @@ function mapStudent(row: any): Student {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    authUserId: row.auth_user_id ?? null,
   }
 }
 
