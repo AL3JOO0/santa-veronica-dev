@@ -1,39 +1,56 @@
-import { NextRequest, NextResponse } from "next/server"
-import { DeleteObjectCommand } from "@aws-sdk/client-s3"
-import { r2 } from "@/lib/r2"
-import { supabase } from "@/lib/supabase"
+import { DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { NextRequest, NextResponse } from 'next/server'
+
+import { r2 } from '@/lib/r2'
+import { getAdminSession } from '@/lib/server/auth-guards'
+import { createSupabaseAdminClient } from '@/lib/server/supabase-admin'
+
+export const runtime = 'nodejs'
 
 export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params
-
-  const { data: photo, error: fetchError } = await supabase
-    .from("photos")
-    .select("storage_key")
-    .eq("id", id)
-    .single()
-
-  if (fetchError || !photo) {
-    return NextResponse.json({ error: "Foto no encontrada." }, { status: 404 })
+  if (!getAdminSession(request)) {
+    return NextResponse.json({ error: 'No autorizado.' }, { status: 401 })
   }
 
-  await r2.send(
-    new DeleteObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
-      Key: photo.storage_key,
-    })
-  )
+  try {
+    const { id } = await params
+    const admin = createSupabaseAdminClient()
 
-  const { error: deleteError } = await supabase
-    .from("photos")
-    .delete()
-    .eq("id", id)
+    const { data: photo, error: fetchError } = await admin
+      .from('photos')
+      .select('storage_key')
+      .eq('id', id)
+      .single()
 
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 })
+    if (fetchError || !photo) {
+      return NextResponse.json({ error: 'Foto no encontrada.' }, { status: 404 })
+    }
+
+    const bucket = process.env.R2_BUCKET_NAME
+    if (!bucket) {
+      return NextResponse.json({ error: 'Falta configurar R2_BUCKET_NAME.' }, { status: 500 })
+    }
+
+    await r2.send(
+      new DeleteObjectCommand({
+        Bucket: bucket,
+        Key: photo.storage_key,
+      }),
+    )
+
+    const { error: deleteError } = await admin
+      .from('photos')
+      .delete()
+      .eq('id', id)
+
+    if (deleteError) throw deleteError
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error eliminando fotografía:', error)
+    return NextResponse.json({ error: 'No se pudo eliminar la foto.' }, { status: 500 })
   }
-
-  return NextResponse.json({ success: true })
 }

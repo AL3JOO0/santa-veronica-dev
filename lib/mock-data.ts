@@ -20,6 +20,7 @@ export const universities: University[] = [
     short_name: 'UN',
     description: 'Institución pública con más de 150 años de historia y campus principal en la capital.',
     location: 'Bogotá, Colombia',
+    notification_email: null,
     created_at: '2025-11-02T10:00:00Z',
     active: false,
     updated_at: null
@@ -30,6 +31,7 @@ export const universities: University[] = [
     short_name: 'UA',
     description: 'Universidad privada reconocida por su excelencia académica y su campus urbano.',
     location: 'Bogotá, Colombia',
+    notification_email: null,
     created_at: '2025-12-14T10:00:00Z',
     active: false,
     updated_at: null
@@ -40,6 +42,7 @@ export const universities: University[] = [
     short_name: 'UV',
     description: 'Principal universidad pública del suroccidente colombiano.',
     location: 'Cali, Colombia',
+    notification_email: null,
     created_at: '2026-01-20T10:00:00Z',
     active: false,
     updated_at: null
@@ -50,6 +53,7 @@ export const universities: University[] = [
     short_name: 'UP',
     description: 'Universidad privada con tradición en humanidades e ingeniería.',
     location: 'Medellín, Colombia',
+    notification_email: null,
     created_at: '2026-02-08T10:00:00Z',
     active: false,
     updated_at: null

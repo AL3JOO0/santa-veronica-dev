@@ -54,6 +54,7 @@ interface Props {
     short_name: string
     location: string
     description: string
+    notification_email: string | null
     active: boolean
   }) => Promise<void>
 }
@@ -69,6 +70,8 @@ export function UniversityDialog({
   const [name, setName] = React.useState("")
   const [location, setLocation] = React.useState("")
   const [description, setDescription] =
+    React.useState("")
+  const [notificationEmail, setNotificationEmail] =
     React.useState("")
   const [active, setActive] =
     React.useState(true)
@@ -88,6 +91,9 @@ export function UniversityDialog({
     setLocation(university?.location ?? "")
     setDescription(
       university?.description ?? "",
+    )
+    setNotificationEmail(
+      university?.notification_email ?? "",
     )
     setActive(
       university?.active ?? true,
@@ -114,12 +120,22 @@ export function UniversityDialog({
       return
     }
 
+    const trimmedNotificationEmail = notificationEmail.trim()
+    if (
+      trimmedNotificationEmail &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedNotificationEmail)
+    ) {
+      toast.error("Ingresa un correo de notificación válido")
+      return
+    }
+
     try {
       const payload = {
         name: trimmedName,
         short_name: initials(trimmedName),
         location: location.trim(),
         description: description.trim(),
+        notification_email: trimmedNotificationEmail || null,
         active,
       }
 
@@ -235,6 +251,33 @@ export function UniversityDialog({
                 placeholder="Breve descripción de la institución"
                 rows={3}
               />
+
+            </Field>
+
+            {/* CORREO DE NOTIFICACIONES */}
+
+            <Field>
+
+              <FieldLabel htmlFor="uni-notification-email">
+                Correo para notificaciones
+              </FieldLabel>
+
+              <Input
+                id="uni-notification-email"
+                type="email"
+                value={notificationEmail}
+                onChange={(event) =>
+                  setNotificationEmail(
+                    event.target.value,
+                  )
+                }
+                placeholder="fotografias@universidad.edu.co"
+                autoComplete="email"
+              />
+
+              <p className="text-xs text-muted-foreground">
+                Aquí llegará el detalle de las fotografías seleccionadas por los estudiantes.
+              </p>
 
             </Field>
 

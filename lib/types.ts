@@ -15,6 +15,7 @@ export interface University {
   description: string
   location: string
   active: boolean
+  notification_email: string | null
   created_at: string
   updated_at: string | null
 }
@@ -51,6 +52,7 @@ export interface Photo {
   mimeType: string
   fileSize: number
   createdAt: string
+  displayUrl?: string
 }
 
 export type ActivityType =
