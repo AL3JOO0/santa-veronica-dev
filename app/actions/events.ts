@@ -3,6 +3,13 @@
 import bcrypt from 'bcryptjs'
 import { supabase } from '@/lib/supabase'
 
+import { cookies } from 'next/headers'
+
+import {
+  APP_SESSION_COOKIE,
+  readAppSessionToken,
+} from '@/lib/server/app-session'
+
 interface CreateEventActionInput {
   universityId: string
   name: string
@@ -40,7 +47,29 @@ function mapEventStatus(status: string) {
       return 'DRAFT'
   }
 }
+async function requireAdmin() {
+  const cookieStore = await cookies()
 
+  const token = cookieStore.get(
+    APP_SESSION_COOKIE,
+  )?.value
+
+  const session = readAppSessionToken(token)
+
+  if (!session) {
+    throw new Error(
+      'No autenticado.',
+    )
+  }
+
+  if (session.userType !== 'ADMINISTRADOR') {
+    throw new Error(
+      'No tienes permisos para realizar esta acción.',
+    )
+  }
+
+  return session
+}
 /*
  * =========================================================
  * CREAR EVENTO
@@ -50,6 +79,7 @@ function mapEventStatus(status: string) {
 export async function createEventAction(
   input: CreateEventActionInput,
 ) {
+  await requireAdmin()
   if (!input.name.trim()) {
     throw new Error(
       'El nombre del evento es obligatorio.',
@@ -127,6 +157,8 @@ export async function createEventAction(
 export async function updateEventAction(
   input: UpdateEventActionInput,
 ) {
+  await requireAdmin()
+
   if (!input.id) {
     throw new Error(
       'El ID del evento es obligatorio.',
@@ -220,6 +252,7 @@ export async function updateEventAction(
 export async function deleteEventAction(
   id: string,
 ) {
+  await requireAdmin()
   if (!id) {
     throw new Error(
       'El ID del evento es obligatorio.',
