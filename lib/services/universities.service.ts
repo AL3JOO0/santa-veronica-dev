@@ -66,6 +66,7 @@ export async function createUniversity(
       description: university.description,
       location: university.location,
       active: university.active,
+      notification_email: university.notification_email || null,
     })
     .select()
     .single()

@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { supabase } from "@/lib/supabase"
 import type { Photo } from "@/lib/types"
 
 function mapRow(row: any): Photo {
@@ -14,11 +13,17 @@ function mapRow(row: any): Photo {
     mimeType: row.mime_type,
     fileSize: row.file_size,
     createdAt: row.created_at,
+    displayUrl: row.display_url,
   }
 }
 
-export function photoUrl(storageKey: string) {
-  return `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${storageKey}`
+export function photoUrl(photo: Photo) {
+  if (photo.displayUrl) return photo.displayUrl
+  if (/^https?:\/\//i.test(photo.storageKey)) return photo.storageKey
+
+  const baseUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_URL?.replace(/\/+$/, '') || ''
+  const cleanKey = photo.storageKey.replace(/^\/+/, '')
+  return baseUrl ? `${baseUrl}/${cleanKey}` : '/placeholder.jpg'
 }
 
 export function usePhotos(studentId: string) {
@@ -31,15 +36,20 @@ export function usePhotos(studentId: string) {
       setLoading(true)
       setError(null)
 
-      const { data, error: dbError } = await supabase
-        .from("photos")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("created_at", { ascending: false })
+      const response = await fetch(
+        `/api/photos/list?studentId=${encodeURIComponent(studentId)}`,
+        { cache: 'no-store' },
+      )
 
-      if (dbError) throw new Error(dbError.message)
+      const body = (await response.json().catch(() => null)) as
+        | { ok?: boolean; data?: any[]; message?: string }
+        | null
 
-      setPhotos((data ?? []).map(mapRow))
+      if (!response.ok || !body?.ok) {
+        throw new Error(body?.message || 'No fue posible cargar las fotografías.')
+      }
+
+      setPhotos((body.data ?? []).map(mapRow))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido.")
     } finally {
@@ -68,7 +78,7 @@ export function usePhotos(studentId: string) {
     if (!signRes.ok) throw new Error("No se pudo iniciar la subida.")
     const { uploadUrl, key } = await signRes.json()
 
-    // 2. subir directo a R2
+    // 2. subir directo al almacenamiento S3 compatible (MinIO o Cloudflare R2)
     await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       xhr.open("PUT", uploadUrl)
@@ -80,22 +90,29 @@ export function usePhotos(studentId: string) {
       }
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) resolve()
-        else reject(new Error("Falló la subida a R2."))
+        else reject(new Error("Falló la subida al almacenamiento."))
       }
-      xhr.onerror = () => reject(new Error("Falló la subida a R2."))
+      xhr.onerror = () => reject(new Error("Falló la subida al almacenamiento."))
       xhr.send(file)
     })
 
-    // 3. registrar en Supabase directo desde el cliente
-    const { error: insertError } = await supabase.from("photos").insert({
-      student_id: studentId,
-      storage_key: key,
-      original_filename: file.name,
-      mime_type: file.type,
-      file_size: file.size,
+    // 3. registrar en Supabase desde el backend para no depender de RLS del navegador
+    const registerRes = await fetch("/api/photos/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        studentId,
+        key,
+        filename: file.name,
+        mimeType: file.type,
+        fileSize: file.size,
+      }),
     })
 
-    if (insertError) throw new Error(insertError.message)
+    if (!registerRes.ok) {
+      const body = await registerRes.json().catch(() => null)
+      throw new Error(body?.message ?? "La foto se subió, pero no pudo registrarse.")
+    }
   }
 
   async function removePhoto(id: string) {

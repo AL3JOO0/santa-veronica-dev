@@ -16,8 +16,7 @@ import {
 } from "lucide-react"
 
 import { toast } from "sonner"
-
-import { useStore } from "@/lib/store"
+import { useEventCounts } from "@/hooks/use-event-counts"
 import { useUniversities } from "@/hooks/use-universities"
 import { useEvents } from "@/hooks/use-events"
 
@@ -57,12 +56,9 @@ export function UniversityDetail({ id }: Props) {
    * utilizando el store.
    */
 
-  const store = useStore()
+  
 
-  const {
-    students,
-    photos,
-  } = store
+  
 
   /*
    * =========================================================
@@ -95,6 +91,8 @@ export function UniversityDetail({ id }: Props) {
   removeEvent,
 } = useEvents()
 
+
+    const { getCounts } = useEventCounts()
   /*
    * =========================================================
    * UNIVERSIDAD ACTUAL
@@ -172,22 +170,11 @@ export function UniversityDetail({ id }: Props) {
    */
 
   const totalStudents = useMemo(() => {
-
-    const eventIds = new Set(
-      universityEvents.map(
-        (event) => event.id,
-      ),
-    )
-
-    return students.filter(
-      (student) =>
-        eventIds.has(student.eventId),
-    ).length
-
-  }, [
-    students,
-    universityEvents,
-  ])
+  return universityEvents.reduce(
+    (sum, event) => sum + getCounts(event.id).studentCount,
+    0,
+  )
+}, [universityEvents, getCounts])
 
   /*
    * =========================================================
@@ -199,37 +186,11 @@ export function UniversityDetail({ id }: Props) {
    */
 
   const totalPhotos = useMemo(() => {
-
-    const eventIds = new Set(
-      universityEvents.map(
-        (event) => event.id,
-      ),
-    )
-
-    const studentIds = new Set(
-      students
-        .filter((student) =>
-          eventIds.has(
-            student.eventId,
-          ),
-        )
-        .map(
-          (student) => student.id,
-        ),
-    )
-
-    return photos.filter(
-      (photo) =>
-        studentIds.has(
-          photo.studentId,
-        ),
-    ).length
-
-  }, [
-    photos,
-    students,
-    universityEvents,
-  ])
+  return universityEvents.reduce(
+    (sum, event) => sum + getCounts(event.id).photoCount,
+    0,
+  )
+}, [universityEvents, getCounts])
 
   /*
    * =========================================================
@@ -636,49 +597,18 @@ export function UniversityDetail({ id }: Props) {
             {filteredEvents.map(
               (event) => {
 
-                const eventStudents =
-                  students.filter(
-                    (student) =>
-                      student.eventId ===
-                      event.id,
-                  )
+                const { studentCount, photoCount } = getCounts(event.id)
 
-                const studentIds =
-                  new Set(
-                    eventStudents.map(
-                      (student) =>
-                        student.id,
-                    ),
+                  return (
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      studentCount={studentCount}
+                      photoCount={photoCount}
+                      onEdit={() => openEditEvent(event)}
+                      onDelete={() => setDeletingEvent(event)}
+                    />
                   )
-
-                const eventPhotos =
-                  photos.filter(
-                    (photo) =>
-                      studentIds.has(
-                        photo.studentId,
-                      ),
-                  )
-
-                return (
-                  <EventCard
-                    key={event.id}
-                    event={event}
-                    studentCount={
-                      eventStudents.length
-                    }
-                    photoCount={
-                      eventPhotos.length
-                    }
-                    onEdit={() =>
-                      openEditEvent(event)
-                    }
-                    onDelete={() =>
-                      setDeletingEvent(
-                        event,
-                      )
-                    }
-                  />
-                )
               },
             )}
 

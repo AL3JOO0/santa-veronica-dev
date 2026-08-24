@@ -5,6 +5,7 @@ import * as React from 'react'
 import {
   getStudentsByEvent,
   createStudent,
+  createStudentsBulk,
   updateStudent,
   deleteStudent,
 } from '@/lib/services/students.service'
@@ -14,6 +15,7 @@ import type { Student } from '@/lib/types'
 import type {
   CreateStudentInput,
   UpdateStudentInput,
+  BulkCreateStudentInput,
 } from '@/lib/services/students.service'
 
 export function useStudents(
@@ -87,7 +89,15 @@ export function useStudents(
       },
       [],
     )
-
+  const bulkAddStudents =
+    React.useCallback(
+      async (students: BulkCreateStudentInput[]) => {
+        const result = await createStudentsBulk(students)
+        await loadStudents()
+        return result
+      },
+      [loadStudents],
+    )
   /**
    * Actualizar estudiante.
    */
@@ -139,6 +149,7 @@ export function useStudents(
     error,
 
     addStudent,
+    bulkAddStudents,
     editStudent,
     removeStudent,
 

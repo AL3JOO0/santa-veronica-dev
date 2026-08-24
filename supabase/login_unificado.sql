@@ -1,8 +1,8 @@
 -- ============================================================
 -- SANTA VERONICA - LOGIN UNIFICADO
 -- Administradores: ingresan con usuario.
--- Estudiantes: ingresan con numero de cedula.
--- La contraseña SIEMPRE la administra Supabase Auth.
+-- Estudiantes: ingresan con numero de cedula directamente desde public.students.
+-- Supabase Auth queda para administradores/personal; estudiantes usan students.password_hash.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS public.usuarios_acceso (
@@ -73,8 +73,8 @@ ALTER TABLE public.usuarios_acceso ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
 -- EJEMPLOS DE RELACION
--- Primero crea el usuario en Authentication > Users y copia su UUID.
--- NO guardes contraseñas en public.users, students ni usuarios_acceso.
+-- Para administradores, crea el usuario en Authentication > Users y copia su UUID.
+-- No guardes contraseñas administrativas en public.users ni usuarios_acceso.
 -- ============================================================
 
 -- ADMINISTRADOR
@@ -93,21 +93,9 @@ ALTER TABLE public.usuarios_acceso ENABLE ROW LEVEL SECURITY;
 -- FROM public.users u
 -- WHERE u.email = 'admin@santaveronica.com';
 
--- ESTUDIANTE
--- Reemplaza UUID_AUTH_ESTUDIANTE y la cedula.
--- INSERT INTO public.usuarios_acceso (
---     auth_user_id,
---     identificador,
---     tipo_usuario,
---     id_estudiante
--- )
--- SELECT
---     'UUID_AUTH_ESTUDIANTE'::uuid,
---     s.document_number,
---     'ESTUDIANTE',
---     s.id
--- FROM public.students s
--- WHERE s.document_number = '1032456789';
+-- ESTUDIANTES
+-- Ya no se crean en auth.users ni usuarios_acceso.
+-- Usa supabase/student_password_login.sql.
 
 -- Validacion rapida:
 -- SELECT

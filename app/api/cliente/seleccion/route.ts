@@ -4,6 +4,7 @@ import {
   APP_SESSION_COOKIE,
   readAppSessionToken,
 } from '@/lib/server/app-session'
+import { notifySelectionSubmitted } from '@/lib/server/selection-email'
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin'
 
 export const runtime = 'nodejs'
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
 
     const { data: ownedPhotos, error: ownedError } = await admin
       .from('photos')
-      .select('id')
+      .select('id, original_filename')
       .eq('student_id', session.profileId)
       .in('id', photoIds)
 
@@ -139,10 +140,28 @@ export async function POST(request: NextRequest) {
 
     if (studentError) throw studentError
 
+    // El correo es una notificación adicional. Si el SMTP o el correo de la
+    // universidad fallan, la selección permanece correctamente enviada.
+    const notification = await notifySelectionSubmitted({
+      admin,
+      selectionId,
+      studentId: session.profileId,
+      photos: ownedPhotos || [],
+    }).catch((error) => {
+      console.error('No fue posible procesar la notificación por correo:', error)
+      return {
+        sent: false,
+        reason: error instanceof Error ? error.message : 'Error desconocido.',
+      }
+    })
+
     return NextResponse.json({
       ok: true,
       selectedIds: photoIds,
-      message: 'Selección enviada correctamente.',
+      notificationSent: notification.sent,
+      message: notification.sent
+        ? 'Selección enviada correctamente y universidad notificada.'
+        : 'Selección enviada correctamente.',
     })
   } catch (error) {
     console.error('Error guardando selección:', error)

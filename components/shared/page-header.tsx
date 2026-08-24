@@ -1,9 +1,11 @@
 import { cn } from '@/lib/utils'
+import * as React from 'react' // Asegúrate de importar React para React.ReactNode
 
 interface PageHeaderProps {
   title: string
   description?: string
   children?: React.ReactNode
+  action?: React.ReactNode // <-- AGREGAMOS ACTION AQUÍ
   className?: string
 }
 
@@ -11,6 +13,7 @@ export function PageHeader({
   title,
   description,
   children,
+  action, // <-- LO RECIBIMOS AQUÍ
   className,
 }: PageHeaderProps) {
   return (
@@ -30,8 +33,13 @@ export function PageHeader({
           </p>
         )}
       </div>
-      {children && (
-        <div className="flex shrink-0 items-center gap-2">{children}</div>
+      
+      {/* RENDERIZAMOS ACTION Y/O CHILDREN AQUÍ */}
+      {(children || action) && (
+        <div className="flex shrink-0 items-center gap-2">
+          {action}
+          {children}
+        </div>
       )}
     </div>
   )
