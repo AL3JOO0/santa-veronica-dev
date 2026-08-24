@@ -39,7 +39,7 @@ export function PhotoGrid({ photos, onDelete }: PhotoGridProps) {
             className="group relative aspect-square overflow-hidden rounded-lg border bg-muted"
           >
             <Image
-              src={photoUrl(photo.storageKey)}
+              src={photoUrl(photo)}
               alt={photo.originalFilename}
               fill
               sizes="200px"

@@ -5,6 +5,7 @@ import {
   readAppSessionToken,
 } from '@/lib/server/app-session'
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin'
+import { getPhotoReadUrl } from '@/lib/r2'
 
 export const runtime = 'nodejs'
 
@@ -33,7 +34,6 @@ export async function GET(request: NextRequest) {
     }
 
     const admin = createSupabaseAdminClient()
-    const bucket = process.env.SUPABASE_PHOTOS_BUCKET || 'photos'
 
     const { data: photoRows, error: photosError } = await admin
       .from('photos')
@@ -52,34 +52,19 @@ export async function GET(request: NextRequest) {
     }
 
     const photos = await Promise.all(
-      (photoRows || []).map(async (photo) => {
+      (photoRows || []).map(async (photo: any) => {
         const previewKey = cleanStorageKey(
           photo.thumbnail_key || photo.storage_key,
         )
 
-        if (/^https?:\/\//i.test(previewKey)) {
-          return {
-            id: photo.id,
-            fileName: photo.original_filename,
-            url: previewKey,
-          }
-        }
-
-        const { data: signedData, error: signedError } = await admin.storage
-          .from(bucket)
-          .createSignedUrl(previewKey, 60 * 60)
-
-        if (signedError) {
-          console.error(
-            `No fue posible firmar ${previewKey} en el bucket ${bucket}:`,
-            signedError,
-          )
-        }
+        const url = /^https?:\/\//i.test(previewKey)
+          ? previewKey
+          : await getPhotoReadUrl(previewKey)
 
         return {
           id: photo.id,
           fileName: photo.original_filename,
-          url: signedData?.signedUrl || '/placeholder.jpg',
+          url,
         }
       }),
     )
@@ -100,7 +85,7 @@ export async function GET(request: NextRequest) {
         .select('photo_id')
         .eq('selection_id', latestSelection.id)
 
-      selectedIds = (selectedRows || []).map((row) => row.photo_id)
+      selectedIds = (selectedRows || []).map((row: any) => row.photo_id)
     }
 
     return NextResponse.json({
