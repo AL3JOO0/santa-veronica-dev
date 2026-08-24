@@ -1,392 +1,279 @@
-import type { Student, StudentStatus } from '@/lib/types'
+import { supabase } from '@/lib/supabase'
+import type { EventItem, Status } from '@/lib/types'
 
-export interface CreateStudentInput {
-  eventId: string
-  documentNumber: string
-  firstName: string
-  lastName: string
-  email: string | null
+/*
+ * =========================================================
+ * TIPOS
+ * =========================================================
+ */
+
+export interface CreateEventInput {
+  universityId: string
+  name: string
+  description: string
+  date: string
   password: string
-  status: StudentStatus
+  status: Status
 }
 
-export interface UpdateStudentInput {
-  eventId?: string
-  documentNumber?: string
-  firstName?: string
-  lastName?: string
-  email?: string | null
+export interface UpdateEventInput {
+  universityId?: string
+  name?: string
+  description?: string
+  date?: string
+  status?: Status
   password?: string
-  status?: StudentStatus
 }
 
-export interface BulkStudentInput {
-  documentNumber: string
-  firstName: string
-  lastName: string
-  email: string | null
-  password: string
-  status: StudentStatus
+/*
+ * =========================================================
+ * STATUS
+ * =========================================================
+ */
+
+function mapStatus(status: string): Status {
+  switch (status.toUpperCase()) {
+    case 'ACTIVE':
+      return 'activo'
+
+    case 'DRAFT':
+      return 'borrador'
+
+    case 'CLOSED':
+      return 'cerrado'
+
+    case 'ARCHIVED':
+      return 'archivado'
+
+    default:
+      return 'borrador'
+  }
 }
 
-export interface BulkCreateStudentInput extends BulkStudentInput {
-  eventId: string
+/*
+ * =========================================================
+ * STATUS FRONTEND -> DATABASE
+ * =========================================================
+ */
+
+function dbStatus(status: Status): string {
+  switch (status) {
+    case 'activo':
+      return 'ACTIVE'
+
+    case 'borrador':
+      return 'DRAFT'
+
+    case 'cerrado':
+      return 'CLOSED'
+
+    case 'archivado':
+      return 'ARCHIVED'
+
+    default:
+      return 'DRAFT'
+  }
 }
 
-interface ApiResponse<T> {
-  ok: boolean
-  data?: T
-  message?: string
-  created?: number
-  updated?: number
-}
+/*
+ * =========================================================
+ * MAPEAR EVENTO
+ * =========================================================
+ */
 
-function mapStudent(row: any): Student {
+function mapEvent(row: any): EventItem {
   return {
     id: row.id,
-    eventId: row.event_id,
-    documentNumber: row.document_number,
-    firstName: row.first_name,
-    lastName: row.last_name,
-    email: row.email,
-    status: row.status,
+    universityId: row.institution_id,
+    name: row.name,
+    description: row.description ?? '',
+    date: row.event_date ?? '',
+    status: mapStatus(row.status),
     createdAt: row.created_at,
-    updatedAt: row.updated_at,
-
+    updatedAt: row.updated_at ?? null,
   }
 }
 
-async function readApiResponse<T>(
-  response: Response,
-): Promise<ApiResponse<T>> {
-  const data = (await response
-    .json()
-    .catch(() => null)) as ApiResponse<T> | null
+/*
+ * =========================================================
+ * OBTENER TODOS
+ * =========================================================
+ */
 
-  return (
-    data ?? {
-      ok: false,
-      message:
-        'No fue posible procesar la respuesta del servidor.',
+export async function getEvents(): Promise<EventItem[]> {
+  const { data, error } = await supabase
+    .from('events')
+    .select('*')
+    .order('created_at', {
+      ascending: false,
+    })
+
+  if (error) {
+    console.error(
+      'Error obteniendo eventos:',
+      error,
+    )
+
+    throw new Error(
+      'No se pudieron obtener los eventos',
+    )
+  }
+
+  return (data ?? []).map(mapEvent)
+}
+
+/*
+ * =========================================================
+ * OBTENER POR ID
+ * =========================================================
+ */
+
+export async function getEvent(
+  id: string,
+): Promise<EventItem | null> {
+  const { data, error } = await supabase
+    .from('events')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error) {
+    console.error(
+      'Error obteniendo evento:',
+      error,
+    )
+
+    if (error.code === 'PGRST116') {
+      return null
     }
-  )
-}
 
-/**
- * Obtener todos los estudiantes.
- */
-export async function getStudents(): Promise<Student[]> {
-  const response = await fetch('/api/students', {
-    cache: 'no-store',
-  })
-
-  const result =
-    await readApiResponse<any[]>(response)
-
-  if (!response.ok || !result.ok) {
     throw new Error(
-      result.message ||
-        'No se pudieron obtener los estudiantes.',
+      'No se pudo obtener el evento',
     )
   }
 
-  return (result.data ?? []).map(mapStudent)
+  return mapEvent(data)
 }
 
-/**
- * Contar estudiantes.
- *
- * Se conserva la función que existía en developer,
- * pero usando nuestra API en lugar de consultar
- * Supabase directamente desde el navegador.
+/*
+ * =========================================================
+ * CREAR EVENTO
+ * =========================================================
  */
-export async function getStudentsCount(): Promise<number> {
-  const students = await getStudents()
-  return students.length
-}
 
-/**
- * Obtener relación estudiante-evento.
- *
- * Se conserva la funcionalidad que existía
- * en developer sin volver a consultar Supabase
- * directamente desde cliente.
- */
-export async function getStudentEventMap(): Promise<
-  { id: string; eventId: string }[]
-> {
-  const students = await getStudents()
+export async function createEvent(
+  input: CreateEventInput,
+): Promise<EventItem> {
+  const { data, error } = await supabase
+    .from('events')
+    .insert({
+      institution_id: input.universityId,
+      name: input.name,
+      description: input.description,
+      event_date: input.date,
+      password: input.password,
+      status: dbStatus(input.status),
+    })
+    .select()
+    .single()
 
-  return students.map((student) => ({
-    id: student.id,
-    eventId: student.eventId,
-  }))
-}
+  if (error) {
+    console.error(
+      'Error creando evento:',
+      error,
+    )
 
-/**
- * Obtener estudiantes de un evento.
- */
-export async function getStudentsByEvent(
-  eventId: string,
-): Promise<Student[]> {
-  const response = await fetch(
-    `/api/students?eventId=${encodeURIComponent(eventId)}`,
-    {
-      cache: 'no-store',
-    },
-  )
-
-  const result =
-    await readApiResponse<any[]>(response)
-
-  if (!response.ok || !result.ok) {
     throw new Error(
-      result.message ||
-        'No se pudieron obtener los estudiantes del evento.',
+      error.message ||
+        'No se pudo crear el evento',
     )
   }
 
-  return (result.data ?? []).map(mapStudent)
+  return mapEvent(data)
 }
 
-/**
- * Obtener estudiante por ID.
+/*
+ * =========================================================
+ * EDITAR EVENTO
+ * =========================================================
  */
-export async function getStudent(
+
+export async function updateEvent(
   id: string,
-): Promise<Student | null> {
-  const response = await fetch(
-    `/api/students/${encodeURIComponent(id)}`,
-    {
-      cache: 'no-store',
-    },
-  )
+  input: UpdateEventInput,
+): Promise<EventItem> {
+  const payload: Record<string, unknown> = {}
 
-  if (response.status === 404) {
-    return null
+  if (input.universityId !== undefined) {
+    payload.institution_id =
+      input.universityId
   }
 
-  const result =
-    await readApiResponse<any>(response)
+  if (input.name !== undefined) {
+    payload.name = input.name
+  }
 
-  if (
-    !response.ok ||
-    !result.ok ||
-    !result.data
-  ) {
+  if (input.description !== undefined) {
+    payload.description = input.description
+  }
+
+  if (input.date !== undefined) {
+    payload.event_date = input.date
+  }
+
+  if (input.status !== undefined) {
+    payload.status = dbStatus(input.status)
+  }
+
+  if (input.password !== undefined) {
+    payload.password = input.password
+  }
+
+  const { data, error } = await supabase
+    .from('events')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error(
+      'Error actualizando evento:',
+      error,
+    )
+
     throw new Error(
-      result.message ||
-        'No se pudo obtener el estudiante.',
+      error.message ||
+        'No se pudo actualizar el evento',
     )
   }
 
-  return mapStudent(result.data)
+  return mapEvent(data)
 }
 
-/**
- * Crear estudiante.
- *
- * La contraseña viaja al backend.
- * El backend genera password_hash con bcrypt.
+/*
+ * =========================================================
+ * ELIMINAR EVENTO
+ * =========================================================
  */
-export async function createStudent(
-  student: CreateStudentInput,
-): Promise<Student> {
-  const response = await fetch('/api/students', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(student),
-  })
 
-  const result =
-    await readApiResponse<any>(response)
-
-  if (
-    !response.ok ||
-    !result.ok ||
-    !result.data
-  ) {
-    throw new Error(
-      result.message ||
-        'No se pudo crear el estudiante.',
-    )
-  }
-
-  return mapStudent(result.data)
-}
-
-/**
- * Actualizar estudiante.
- *
- * Si password viene vacío/no definido,
- * el backend conserva la contraseña existente.
- */
-export async function updateStudent(
-  id: string,
-  student: UpdateStudentInput,
-): Promise<Student> {
-  const response = await fetch(
-    `/api/students/${encodeURIComponent(id)}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(student),
-    },
-  )
-
-  const result =
-    await readApiResponse<any>(response)
-
-  if (
-    !response.ok ||
-    !result.ok ||
-    !result.data
-  ) {
-    throw new Error(
-      result.message ||
-        'No se pudo actualizar el estudiante.',
-    )
-  }
-
-  return mapStudent(result.data)
-}
-
-/**
- * Eliminar estudiante.
- */
-export async function deleteStudent(
+export async function deleteEvent(
   id: string,
 ): Promise<void> {
-  const response = await fetch(
-    `/api/students/${encodeURIComponent(id)}`,
-    {
-      method: 'DELETE',
-    },
-  )
+  const { error } = await supabase
+    .from('events')
+    .delete()
+    .eq('id', id)
 
-  const result =
-    await readApiResponse<never>(response)
+  if (error) {
+    console.error(
+      'Error eliminando evento:',
+      error,
+    )
 
-  if (!response.ok || !result.ok) {
     throw new Error(
-      result.message ||
-        'No se pudo eliminar el estudiante.',
+      error.message ||
+        'No se pudo eliminar el evento',
     )
   }
-}
-
-/**
- * Importación masiva.
- *
- * Se procesan lotes de 40 para evitar
- * peticiones demasiado grandes.
- */
-export async function importStudentsBulk(
-  eventId: string,
-  students: BulkStudentInput[],
-  onProgress?: (
-    processed: number,
-    total: number,
-  ) => void,
-) {
-  const BATCH_SIZE = 40
-
-  let created = 0
-  let updated = 0
-  let processed = 0
-
-  for (
-    let index = 0;
-    index < students.length;
-    index += BATCH_SIZE
-  ) {
-    const batch = students.slice(
-      index,
-      index + BATCH_SIZE,
-    )
-
-    const response = await fetch(
-      '/api/students/bulk',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          eventId,
-          students: batch,
-        }),
-      },
-    )
-
-    const result =
-      await readApiResponse<never>(response)
-
-    if (!response.ok || !result.ok) {
-      throw new Error(
-        result.message ||
-          'No se pudo importar el archivo.',
-      )
-    }
-
-    created += result.created ?? 0
-    updated += result.updated ?? 0
-
-    processed += batch.length
-
-    onProgress?.(
-      processed,
-      students.length,
-    )
-  }
-
-  return {
-    created,
-    updated,
-    total: students.length,
-  }
-}
-
-/**
- * Compatibilidad con la función anterior
- * createStudentsBulk.
- */
-export async function createStudentsBulk(
-  students: BulkCreateStudentInput[],
-) {
-  if (students.length === 0) {
-    return {
-      created: 0,
-      updated: 0,
-      total: 0,
-    }
-  }
-
-  const eventIds = Array.from(
-    new Set(
-      students.map(
-        (student) => student.eventId,
-      ),
-    ),
-  )
-
-  if (eventIds.length !== 1) {
-    throw new Error(
-      'La carga masiva debe pertenecer a un solo evento.',
-    )
-  }
-
-  return importStudentsBulk(
-    eventIds[0],
-    students.map(
-      ({
-        eventId: _eventId,
-        ...student
-      }) => student,
-    ),
-  )
 }
