@@ -12,8 +12,15 @@ import {
   normalizeDocumentNumber,
   verifyStudentPassword,
 } from '@/lib/server/student-password'
+import {
+  consumeDistributedRateLimit,
+  getClientAddress,
+  isSameOriginRequest,
+} from '@/lib/server/request-security'
+import { loginSchema } from '@/lib/validation'
 
 export const runtime = 'nodejs'
+export const maxDuration = 10
 
 function normalizeIdentifier(value: string) {
   const trimmed = value.trim()
@@ -124,23 +131,48 @@ async function loginStudent(
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json().catch(() => null)) as
-      | { identifier?: string; password?: string; remember?: boolean }
-      | null
+    if (!isSameOriginRequest(request)) {
+      return NextResponse.json({ ok: false, message: 'Origen no permitido.' }, { status: 403 })
+    }
 
-    const identifier = normalizeIdentifier(body?.identifier || '')
-    const password = body?.password || ''
-    const remember = Boolean(body?.remember)
+    const parsed = loginSchema.safeParse(await request.json().catch(() => null))
+    if (!parsed.success) {
+      return NextResponse.json(
+        { ok: false, message: 'Ingresa el usuario o cédula y la contraseña.' },
+        { status: 400 },
+      )
+    }
 
-    if (!identifier || !password) {
-      return NextResponse.json({ ok: false, message: 'Ingresa el usuario o cédula y la contraseña.' }, { status: 400 })
+    const identifier = normalizeIdentifier(parsed.data.identifier)
+    const password = parsed.data.password
+    const remember = parsed.data.remember
+    const address = getClientAddress(request)
+    const admin = createSupabaseAdminClient()
+    const [ipLimit, accountLimit] = await Promise.all([
+      consumeDistributedRateLimit(admin, `login:ip:${address}`, 20, 15 * 60),
+      consumeDistributedRateLimit(
+        admin,
+        `login:account:${address}:${identifier}`,
+        5,
+        15 * 60,
+      ),
+    ])
+
+    if (!ipLimit.allowed || !accountLimit.allowed) {
+      const resetAt = Math.max(ipLimit.resetAt, accountLimit.resetAt)
+      return NextResponse.json(
+        { ok: false, message: 'Demasiados intentos. Intenta nuevamente más tarde.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(Math.ceil((resetAt - Date.now()) / 1000)) },
+        },
+      )
     }
 
     if (!isValidIdentifier(identifier)) {
       return NextResponse.json({ ok: false, message: 'Usuario o contraseña incorrectos.' }, { status: 401 })
     }
 
-    const admin = createSupabaseAdminClient()
     const adminResult = await loginAdministrator(identifier, password, admin)
     const result = adminResult || (await loginStudent(identifier, password, admin))
 

@@ -2,8 +2,7 @@
 
 import * as React from 'react'
 
-import { supabase } from '@/lib/supabase'
-import { getStudentsCount } from '@/lib/services/students.service'
+import { getDashboardStats } from '@/lib/services/stats.service'
 
 export function useDashboardStats() {
   const [studentsCount, setStudentsCount] = React.useState(0)
@@ -16,19 +15,9 @@ export function useDashboardStats() {
       setLoading(true)
       setError(null)
 
-      const [students, photosResult] = await Promise.all([
-        getStudentsCount(),
-        supabase
-          .from('photos')
-          .select('*', { count: 'exact', head: true }),
-      ])
-
-      if (photosResult.error) {
-        throw new Error(photosResult.error.message)
-      }
-
-      setStudentsCount(students)
-      setPhotosCount(photosResult.count ?? 0)
+      const stats = await getDashboardStats(true)
+      setStudentsCount(stats.studentsCount)
+      setPhotosCount(stats.photosCount)
     } catch (err) {
       console.error('Error cargando estadísticas:', err)
       setError(

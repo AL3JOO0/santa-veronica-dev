@@ -4,19 +4,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { r2 } from '@/lib/r2'
 import { getAdminSession } from '@/lib/server/auth-guards'
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin'
+import { isSameOriginRequest } from '@/lib/server/request-security'
+import { firstZodError, idSchema } from '@/lib/validation'
 
 export const runtime = 'nodejs'
+export const maxDuration = 10
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!getAdminSession(request)) {
+  if (!(await getAdminSession(request))) {
     return NextResponse.json({ error: 'No autorizado.' }, { status: 401 })
+  }
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: 'Origen no permitido.' }, { status: 403 })
   }
 
   try {
-    const { id } = await params
+    const parsedId = idSchema.safeParse((await params).id)
+    if (!parsedId.success) {
+      return NextResponse.json({ error: firstZodError(parsedId.error) }, { status: 400 })
+    }
+    const id = parsedId.data
     const admin = createSupabaseAdminClient()
 
     const { data: photo, error: fetchError } = await admin

@@ -3,6 +3,11 @@
 import * as React from "react"
 import { UploadCloud } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  ALLOWED_IMAGE_TYPES,
+  MAX_FILES_PER_UPLOAD,
+  MAX_IMAGE_BYTES,
+} from "@/lib/upload-constraints"
 
 interface PhotoDropzoneProps {
   onFiles: (files: File[]) => void
@@ -15,9 +20,14 @@ export function PhotoDropzone({ onFiles, disabled }: PhotoDropzoneProps) {
 
   function handleFiles(fileList: FileList | null) {
     if (!fileList) return
-    const files = Array.from(fileList).filter((f) =>
-      f.type.startsWith("image/")
-    )
+    const files = Array.from(fileList)
+      .slice(0, MAX_FILES_PER_UPLOAD)
+      .filter(
+        (file) =>
+          ALLOWED_IMAGE_TYPES.includes(
+            file.type as (typeof ALLOWED_IMAGE_TYPES)[number],
+          ) && file.size > 0 && file.size <= MAX_IMAGE_BYTES,
+      )
     if (files.length > 0) onFiles(files)
   }
 
@@ -45,12 +55,12 @@ export function PhotoDropzone({ onFiles, disabled }: PhotoDropzoneProps) {
         Arrastra fotos aquí o haz clic para seleccionar
       </p>
       <p className="text-xs text-muted-foreground">
-        JPG, PNG o WEBP — puedes subir varias a la vez
+        JPG, PNG o WEBP — máximo 20 archivos de 15 MB
       </p>
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp"
         multiple
         className="hidden"
         onChange={(e) => handleFiles(e.target.files)}

@@ -38,8 +38,11 @@ export function StudentPhotos({ eventId, studentId }: Props) {
   const {
     photos,
     loading: photosLoading,
+    loadingMore,
+    hasMore,
     error: photosError,
     reload,
+    loadMore,
     uploadPhoto,
     removePhoto,
   } = usePhotos(studentId)
@@ -54,8 +57,12 @@ export function StudentPhotos({ eventId, studentId }: Props) {
     }))
     setTasks((prev) => [...prev, ...newTasks])
 
-    await Promise.all(
-      files.map(async (file, i) => {
+    let nextIndex = 0
+    let uploadedCount = 0
+    const worker = async () => {
+      while (nextIndex < files.length) {
+        const i = nextIndex++
+        const file = files[i]
         const taskId = newTasks[i].id
         try {
           await uploadPhoto(file, (percent) => {
@@ -65,6 +72,7 @@ export function StudentPhotos({ eventId, studentId }: Props) {
               )
             )
           })
+          uploadedCount += 1
         } catch (err) {
           toast.error(
             err instanceof Error
@@ -74,11 +82,17 @@ export function StudentPhotos({ eventId, studentId }: Props) {
         } finally {
           setTasks((prev) => prev.filter((t) => t.id !== taskId))
         }
-      })
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(3, files.length) }, () => worker()),
     )
 
     await reload()
-    toast.success("Fotos subidas correctamente.")
+    if (uploadedCount > 0) {
+      toast.success(`${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'} correctamente.`)
+    }
   }
 
   async function handleDelete(id: string) {
@@ -173,7 +187,16 @@ export function StudentPhotos({ eventId, studentId }: Props) {
               {photosError}
             </p>
           ) : (
-            <PhotoGrid photos={photos} onDelete={handleDelete} />
+            <div className="space-y-5">
+              <PhotoGrid photos={photos} onDelete={handleDelete} />
+              {hasMore && (
+                <div className="flex justify-center">
+                  <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+                    {loadingMore ? "Cargando..." : "Cargar más fotos"}
+                  </Button>
+                </div>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

@@ -1,11 +1,11 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import dynamic from 'next/dynamic'
 
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
-import { AppSidebar } from '@/components/layout/app-sidebar'
-import { AppHeader } from '@/components/layout/app-header'
-import { AdminAuthGate } from '@/components/auth/admin-auth-gate'
+const AdminShell = dynamic(
+  () => import('@/components/layout/admin-shell').then((module) => module.AdminShell),
+)
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -19,15 +19,5 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <>{children}</>
   }
 
-  return (
-    <AdminAuthGate>
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <AppHeader />
-          <main className="flex-1 p-4 md:p-6 lg:p-8">{children}</main>
-        </SidebarInset>
-      </SidebarProvider>
-    </AdminAuthGate>
-  )
+  return <AdminShell>{children}</AdminShell>
 }

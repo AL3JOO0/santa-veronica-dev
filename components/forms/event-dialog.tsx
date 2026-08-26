@@ -445,9 +445,9 @@ React.useEffect(() => {
 
                 <Select
                   value={universityId}
-                  onValueChange={
-                    setUniversityId
-                  }
+                  onValueChange={(value) => {
+                    if (value) setUniversityId(value)
+                  }}
                   disabled={
                     universitiesLoading ||
                     saving
