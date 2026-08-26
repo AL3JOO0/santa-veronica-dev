@@ -1,3 +1,5 @@
+import 'server-only'
+
 import {
   GetObjectCommand,
   S3Client,
@@ -25,7 +27,7 @@ export const r2 = new S3Client({
   },
 })
 
-export function getPhotoPublicUrl(storageKey: string) {
+function getPhotoPublicUrl(storageKey: string) {
   const baseUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_URL?.replace(/\/+$/, '')
   if (!baseUrl) return null
 

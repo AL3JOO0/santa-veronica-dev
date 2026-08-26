@@ -486,7 +486,9 @@ export default function DashboardPage() {
       <UniversityDialog
   open={uniOpen}
   onOpenChange={setUniOpen}
-  onSubmit={addUniversity}
+  onSubmit={async (university) => {
+    await addUniversity(university)
+  }}
 />
 
       {/* =====================================================

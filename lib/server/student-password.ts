@@ -1,3 +1,5 @@
+import 'server-only'
+
 import bcrypt from 'bcryptjs'
 
 const BCRYPT_ROUNDS = 10
@@ -7,9 +9,9 @@ export function normalizeDocumentNumber(value: string) {
   return /^[\d.\-\s]+$/.test(trimmed) ? trimmed.replace(/\D/g, '') : trimmed
 }
 
-export function validateStudentPassword(password: string) {
+function validateStudentPassword(password: string) {
   const value = password.trim()
-  if (value.length < 6) throw new Error('La contraseña debe tener mínimo 6 caracteres.')
+  if (value.length < 8) throw new Error('La contraseña debe tener mínimo 8 caracteres.')
   if (value.length > 100) throw new Error('La contraseña supera la longitud permitida.')
   return value
 }

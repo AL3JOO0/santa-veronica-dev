@@ -6,8 +6,11 @@ import {
   hashStudentPassword,
   normalizeDocumentNumber,
 } from '@/lib/server/student-password'
+import { isSameOriginRequest } from '@/lib/server/request-security'
+import { firstZodError, idSchema, updateStudentSchema } from '@/lib/validation'
 
 export const runtime = 'nodejs'
+export const maxDuration = 10
 
 const STUDENT_COLUMNS =
   'id, event_id, document_number, first_name, last_name, email, status, created_at, updated_at'
@@ -23,8 +26,12 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  if (!getAdminSession(request)) return unauthorized()
-  const { id } = await context.params
+  if (!(await getAdminSession(request))) return unauthorized()
+  const params = idSchema.safeParse((await context.params).id)
+  if (!params.success) {
+    return NextResponse.json({ ok: false, message: firstZodError(params.error) }, { status: 400 })
+  }
+  const id = params.data
 
   try {
     const admin = createSupabaseAdminClient()
@@ -56,29 +63,33 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  if (!getAdminSession(request)) return unauthorized()
-  const { id } = await context.params
+  if (!(await getAdminSession(request))) return unauthorized()
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ ok: false, message: 'Origen no permitido.' }, { status: 403 })
+  }
+  const params = idSchema.safeParse((await context.params).id)
+  if (!params.success) {
+    return NextResponse.json({ ok: false, message: firstZodError(params.error) }, { status: 400 })
+  }
+  const id = params.data
 
   try {
-    const body = (await request.json().catch(() => null)) as
-      | {
-          eventId?: string
-          documentNumber?: string
-          firstName?: string
-          lastName?: string
-          email?: string | null
-          password?: string
-          status?: string
-        }
-      | null
+    const parsed = updateStudentSchema.safeParse(await request.json().catch(() => null))
+    if (!parsed.success) {
+      return NextResponse.json(
+        { ok: false, message: firstZodError(parsed.error) },
+        { status: 400 },
+      )
+    }
+    const body = parsed.data
 
     const payload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }
 
-    if (body?.eventId !== undefined) payload.event_id = body.eventId.trim()
+    if (body.eventId !== undefined) payload.event_id = body.eventId
 
-    if (body?.documentNumber !== undefined) {
+    if (body.documentNumber !== undefined) {
       const documentNumber = normalizeDocumentNumber(body.documentNumber)
       if (!documentNumber) {
         return NextResponse.json(
@@ -89,31 +100,17 @@ export async function PATCH(
       payload.document_number = documentNumber
     }
 
-    if (body?.firstName !== undefined) {
-      const firstName = body.firstName.trim()
-      if (!firstName) {
-        return NextResponse.json(
-          { ok: false, message: 'El nombre es obligatorio.' },
-          { status: 400 },
-        )
-      }
-      payload.first_name = firstName
+    if (body.firstName !== undefined) {
+      payload.first_name = body.firstName
     }
 
-    if (body?.lastName !== undefined) {
-      const lastName = body.lastName.trim()
-      if (!lastName) {
-        return NextResponse.json(
-          { ok: false, message: 'El apellido es obligatorio.' },
-          { status: 400 },
-        )
-      }
-      payload.last_name = lastName
+    if (body.lastName !== undefined) {
+      payload.last_name = body.lastName
     }
 
-    if (body?.email !== undefined) payload.email = body.email?.trim() || null
-    if (body?.status !== undefined) payload.status = body.status
-    if (body?.password?.trim()) {
+    if (body.email !== undefined) payload.email = body.email
+    if (body.status !== undefined) payload.status = body.status
+    if (body.password) {
       payload.password_hash = await hashStudentPassword(body.password)
     }
 
@@ -153,8 +150,15 @@ export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  if (!getAdminSession(request)) return unauthorized()
-  const { id } = await context.params
+  if (!(await getAdminSession(request))) return unauthorized()
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ ok: false, message: 'Origen no permitido.' }, { status: 403 })
+  }
+  const params = idSchema.safeParse((await context.params).id)
+  if (!params.success) {
+    return NextResponse.json({ ok: false, message: firstZodError(params.error) }, { status: 400 })
+  }
+  const id = params.data
 
   try {
     const admin = createSupabaseAdminClient()

@@ -87,7 +87,7 @@ export default function LoginPage() {
       <section className="relative flex min-h-screen w-full flex-col bg-white lg:w-1/2">
         <header className="absolute left-0 top-0 z-20 flex w-full justify-center p-6 lg:p-8">
           <Image
-            src="/LOGOSV.jpg"
+            src="/LOGOSV.webp"
             alt="Santa Verónica Estudio"
             width={4030}
             height={1975}
@@ -235,7 +235,7 @@ export default function LoginPage() {
 
           <div className="mb-6 flex items-center justify-between rounded-xl border border-gray-100 bg-[#f8f9ff] p-4">
             <div className="flex -space-x-3">
-              {['portrait-1.png', 'portrait-2.png', 'portrait-3.png'].map(
+              {['portrait-1.webp', 'portrait-2.webp', 'portrait-3.webp'].map(
                 (file) => (
                   <div
                     key={file}

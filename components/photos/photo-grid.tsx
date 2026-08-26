@@ -43,6 +43,7 @@ export function PhotoGrid({ photos, onDelete }: PhotoGridProps) {
               alt={photo.originalFilename}
               fill
               sizes="200px"
+              unoptimized
               className="object-cover"
             />
             <div className="absolute inset-0 flex items-end justify-end bg-black/0 p-2 opacity-0 transition-opacity group-hover:bg-black/20 group-hover:opacity-100">

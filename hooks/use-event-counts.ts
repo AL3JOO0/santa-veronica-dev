@@ -2,10 +2,9 @@
 
 import * as React from 'react'
 
-import { getStudentEventMap } from '@/lib/services/students.service'
-import { getAllPhotoStudentIds } from '@/lib/services/photos.service'
+import { getDashboardStats } from '@/lib/services/stats.service'
 
-export interface EventCounts {
+interface EventCounts {
   studentCount: number
   photoCount: number
 }
@@ -32,36 +31,8 @@ export function useEventCounts() {
       setLoading(true)
       setError(null)
 
-      const [studentMap, photoStudentIds] = await Promise.all([
-        getStudentEventMap(),
-        getAllPhotoStudentIds(),
-      ])
-
-      const studentToEvent: Record<string, string> = {}
-      const counts: Record<string, EventCounts> = {}
-
-      for (const { id, eventId } of studentMap) {
-        studentToEvent[id] = eventId
-
-        if (!counts[eventId]) {
-          counts[eventId] = { studentCount: 0, photoCount: 0 }
-        }
-
-        counts[eventId].studentCount += 1
-      }
-
-      for (const studentId of photoStudentIds) {
-        const eventId = studentToEvent[studentId]
-        if (!eventId) continue
-
-        if (!counts[eventId]) {
-          counts[eventId] = { studentCount: 0, photoCount: 0 }
-        }
-
-        counts[eventId].photoCount += 1
-      }
-
-      setCountsByEvent(counts)
+      const stats = await getDashboardStats()
+      setCountsByEvent(stats.countsByEvent)
     } catch (err) {
       console.error('Error cargando conteos por evento:', err)
       setError(

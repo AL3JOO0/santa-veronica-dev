@@ -20,7 +20,7 @@ export interface UpdateStudentInput {
   status?: StudentStatus
 }
 
-export interface BulkStudentInput {
+interface BulkStudentInput {
   documentNumber: string
   firstName: string
   lastName: string
@@ -41,7 +41,19 @@ interface ApiResponse<T> {
   updated?: number
 }
 
-function mapStudent(row: any): Student {
+interface StudentApiRow {
+  id: string
+  event_id: string
+  document_number: string
+  first_name: string
+  last_name: string
+  email: string | null
+  status: StudentStatus
+  created_at: string
+  updated_at: string
+}
+
+function mapStudent(row: StudentApiRow): Student {
   return {
     id: row.id,
     eventId: row.event_id,
@@ -73,57 +85,6 @@ async function readApiResponse<T>(
 }
 
 /**
- * Obtener todos los estudiantes.
- */
-export async function getStudents(): Promise<Student[]> {
-  const response = await fetch('/api/students', {
-    cache: 'no-store',
-  })
-
-  const result =
-    await readApiResponse<any[]>(response)
-
-  if (!response.ok || !result.ok) {
-    throw new Error(
-      result.message ||
-        'No se pudieron obtener los estudiantes.',
-    )
-  }
-
-  return (result.data ?? []).map(mapStudent)
-}
-
-/**
- * Contar estudiantes.
- *
- * Se conserva la función que existía en developer,
- * pero usando nuestra API en lugar de consultar
- * Supabase directamente desde el navegador.
- */
-export async function getStudentsCount(): Promise<number> {
-  const students = await getStudents()
-  return students.length
-}
-
-/**
- * Obtener relación estudiante-evento.
- *
- * Se conserva la funcionalidad que existía
- * en developer sin volver a consultar Supabase
- * directamente desde cliente.
- */
-export async function getStudentEventMap(): Promise<
-  { id: string; eventId: string }[]
-> {
-  const students = await getStudents()
-
-  return students.map((student) => ({
-    id: student.id,
-    eventId: student.eventId,
-  }))
-}
-
-/**
  * Obtener estudiantes de un evento.
  */
 export async function getStudentsByEvent(
@@ -137,7 +98,7 @@ export async function getStudentsByEvent(
   )
 
   const result =
-    await readApiResponse<any[]>(response)
+    await readApiResponse<StudentApiRow[]>(response)
 
   if (!response.ok || !result.ok) {
     throw new Error(
@@ -147,40 +108,6 @@ export async function getStudentsByEvent(
   }
 
   return (result.data ?? []).map(mapStudent)
-}
-
-/**
- * Obtener estudiante por ID.
- */
-export async function getStudent(
-  id: string,
-): Promise<Student | null> {
-  const response = await fetch(
-    `/api/students/${encodeURIComponent(id)}`,
-    {
-      cache: 'no-store',
-    },
-  )
-
-  if (response.status === 404) {
-    return null
-  }
-
-  const result =
-    await readApiResponse<any>(response)
-
-  if (
-    !response.ok ||
-    !result.ok ||
-    !result.data
-  ) {
-    throw new Error(
-      result.message ||
-        'No se pudo obtener el estudiante.',
-    )
-  }
-
-  return mapStudent(result.data)
 }
 
 /**
@@ -201,7 +128,7 @@ export async function createStudent(
   })
 
   const result =
-    await readApiResponse<any>(response)
+    await readApiResponse<StudentApiRow>(response)
 
   if (
     !response.ok ||
@@ -239,7 +166,7 @@ export async function updateStudent(
   )
 
   const result =
-    await readApiResponse<any>(response)
+    await readApiResponse<StudentApiRow>(response)
 
   if (
     !response.ok ||
@@ -285,7 +212,7 @@ export async function deleteStudent(
  * Se procesan lotes de 40 para evitar
  * peticiones demasiado grandes.
  */
-export async function importStudentsBulk(
+async function importStudentsBulk(
   eventId: string,
   students: BulkStudentInput[],
   onProgress?: (
@@ -382,11 +309,13 @@ export async function createStudentsBulk(
 
   return importStudentsBulk(
     eventIds[0],
-    students.map(
-      ({
-        eventId: _eventId,
-        ...student
-      }) => student,
-    ),
+    students.map((student) => ({
+      documentNumber: student.documentNumber,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      email: student.email,
+      password: student.password,
+      status: student.status,
+    })),
   )
 }

@@ -90,7 +90,7 @@ export function AppSidebar() {
           className="flex w-full items-center justify-center overflow-hidden rounded-xl bg-white px-3 py-2 transition-all duration-300 hover:shadow-sm"
         >
           <Image
-            src="/LOGOSV.jpg"
+            src="/LOGOSV.webp"
             alt="Santa Verónica Estudio"
             width={4030}
             height={1975}

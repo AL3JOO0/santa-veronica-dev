@@ -3,7 +3,19 @@
 import { useCallback, useEffect, useState } from "react"
 import type { Photo } from "@/lib/types"
 
-function mapRow(row: any): Photo {
+interface PhotoApiRow {
+  id: string
+  student_id: string
+  storage_key: string
+  thumbnail_key: string | null
+  original_filename: string
+  mime_type: string
+  file_size: number
+  created_at: string
+  display_url?: string
+}
+
+function mapRow(row: PhotoApiRow): Photo {
   return {
     id: row.id,
     studentId: row.student_id,
@@ -29,33 +41,52 @@ export function photoUrl(photo: Photo) {
 export function usePhotos(studentId: string) {
   const [photos, setPhotos] = useState<Photo[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const reload = useCallback(async () => {
+  const fetchPage = useCallback(async (targetPage: number, replace: boolean) => {
     try {
-      setLoading(true)
+      if (replace) setLoading(true)
+      else setLoadingMore(true)
       setError(null)
 
       const response = await fetch(
-        `/api/photos/list?studentId=${encodeURIComponent(studentId)}`,
+        `/api/photos/list?studentId=${encodeURIComponent(studentId)}&page=${targetPage}&pageSize=50`,
         { cache: 'no-store' },
       )
 
       const body = (await response.json().catch(() => null)) as
-        | { ok?: boolean; data?: any[]; message?: string }
+        | {
+            ok?: boolean
+            data?: PhotoApiRow[]
+            message?: string
+            pagination?: { hasMore?: boolean }
+          }
         | null
 
       if (!response.ok || !body?.ok) {
         throw new Error(body?.message || 'No fue posible cargar las fotografías.')
       }
 
-      setPhotos((body.data ?? []).map(mapRow))
+      const rows = (body.data ?? []).map(mapRow)
+      setPhotos((current) => (replace ? rows : [...current, ...rows]))
+      setPage(targetPage)
+      setHasMore(Boolean(body.pagination?.hasMore))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido.")
     } finally {
-      setLoading(false)
+      if (replace) setLoading(false)
+      else setLoadingMore(false)
     }
   }, [studentId])
+
+  const reload = useCallback(() => fetchPage(1, true), [fetchPage])
+  const loadMore = useCallback(() => {
+    if (!hasMore || loadingMore) return Promise.resolve()
+    return fetchPage(page + 1, false)
+  }, [fetchPage, hasMore, loadingMore, page])
 
   useEffect(() => {
     reload()
@@ -73,6 +104,7 @@ export function usePhotos(studentId: string) {
         studentId,
         filename: file.name,
         mimeType: file.type,
+        fileSize: file.size,
       }),
     })
     if (!signRes.ok) throw new Error("No se pudo iniciar la subida.")
@@ -123,5 +155,15 @@ export function usePhotos(studentId: string) {
     }
   }
 
-  return { photos, loading, error, reload, uploadPhoto, removePhoto }
+  return {
+    photos,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    reload,
+    loadMore,
+    uploadPhoto,
+    removePhoto,
+  }
 }

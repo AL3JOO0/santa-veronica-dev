@@ -6,8 +6,11 @@ import {
   hashStudentPassword,
   normalizeDocumentNumber,
 } from '@/lib/server/student-password'
+import { isSameOriginRequest } from '@/lib/server/request-security'
+import { createStudentSchema, firstZodError } from '@/lib/validation'
 
 export const runtime = 'nodejs'
+export const maxDuration = 10
 
 const STUDENT_COLUMNS =
   'id, event_id, document_number, first_name, last_name, email, status, created_at, updated_at'
@@ -20,7 +23,7 @@ function unauthorized() {
 }
 
 export async function GET(request: NextRequest) {
-  if (!getAdminSession(request)) return unauthorized()
+  if (!(await getAdminSession(request))) return unauthorized()
 
   try {
     const admin = createSupabaseAdminClient()
@@ -47,36 +50,25 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!getAdminSession(request)) return unauthorized()
+  if (!(await getAdminSession(request))) return unauthorized()
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ ok: false, message: 'Origen no permitido.' }, { status: 403 })
+  }
 
   try {
-    const body = (await request.json().catch(() => null)) as
-      | {
-          eventId?: string
-          documentNumber?: string
-          firstName?: string
-          lastName?: string
-          email?: string | null
-          password?: string
-          status?: string
-        }
-      | null
-
-    const eventId = body?.eventId?.trim() || ''
-    const documentNumber = normalizeDocumentNumber(body?.documentNumber || '')
-    const firstName = body?.firstName?.trim() || ''
-    const lastName = body?.lastName?.trim() || ''
-    const email = body?.email?.trim() || null
-    const password = body?.password || ''
-    const status = body?.status || 'PENDING'
-
-    if (!eventId || !documentNumber || !firstName || !lastName || !password) {
+    const parsed = createStudentSchema.safeParse(await request.json().catch(() => null))
+    if (!parsed.success) {
       return NextResponse.json(
-        {
-          ok: false,
-          message:
-            'Documento, nombre, apellido, contraseña y evento son obligatorios.',
-        },
+        { ok: false, message: firstZodError(parsed.error) },
+        { status: 400 },
+      )
+    }
+
+    const { eventId, firstName, lastName, email, password, status } = parsed.data
+    const documentNumber = normalizeDocumentNumber(parsed.data.documentNumber)
+    if (!documentNumber) {
+      return NextResponse.json(
+        { ok: false, message: 'El documento no es válido.' },
         { status: 400 },
       )
     }

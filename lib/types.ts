@@ -54,17 +54,3 @@ export interface Photo {
   createdAt: string
   displayUrl?: string
 }
-
-export type ActivityType =
-  | 'university'
-  | 'event'
-  | 'student'
-  | 'photo'
-
-export interface Activity {
-  id: string
-  type: ActivityType
-  action: 'creó' | 'editó' | 'eliminó' | 'subió'
-  label: string
-  at: string
-}
