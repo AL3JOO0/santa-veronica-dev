@@ -308,11 +308,13 @@ export default function ClientGalleryPage() {
                       className="object-cover transition-transform duration-300 group-hover:scale-[1.025]"
                     />
 
-                    <div className="pointer-events-none absolute inset-0 flex rotate-[-18deg] items-center justify-center">
-                      <span className="select-none whitespace-nowrap text-[11px] font-bold uppercase tracking-[0.28em] text-white/55 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)] sm:text-xs">
-                        Santa Verónica
-                      </span>
-                    </div>
+                    {!photo.hasEmbeddedWatermark ? (
+                      <div className="pointer-events-none absolute inset-0 flex rotate-[-18deg] items-center justify-center">
+                        <span className="select-none whitespace-nowrap text-[11px] font-bold uppercase tracking-[0.28em] text-white/55 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)] sm:text-xs">
+                          Santa Verónica
+                        </span>
+                      </div>
+                    ) : null}
 
                     <span
                       className={`absolute left-2.5 top-2.5 grid size-7 place-items-center rounded-full border text-white shadow-sm transition ${
@@ -410,11 +412,13 @@ export default function ClientGalleryPage() {
                 unoptimized
                 className="object-contain"
               />
-              <div className="pointer-events-none absolute inset-0 flex rotate-[-18deg] items-center justify-center">
-                <span className="select-none whitespace-nowrap text-lg font-bold uppercase tracking-[0.34em] text-white/45 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] sm:text-2xl">
-                  Santa Verónica
-                </span>
-              </div>
+              {!previewPhoto.hasEmbeddedWatermark ? (
+                <div className="pointer-events-none absolute inset-0 flex rotate-[-18deg] items-center justify-center">
+                  <span className="select-none whitespace-nowrap text-lg font-bold uppercase tracking-[0.34em] text-white/45 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] sm:text-2xl">
+                    Santa Verónica
+                  </span>
+                </div>
+              ) : null}
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-white">
               <span className="truncate text-xs text-white/70">

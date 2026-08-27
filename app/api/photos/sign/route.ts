@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: firstZodError(parsed.error) }, { status: 400 })
     }
-    const { studentId, mimeType, fileSize } = parsed.data
+    const { studentId, mimeType, fileSize, preview } = parsed.data
 
     const admin = createSupabaseAdminClient()
     const { data: student, error: studentError } = await admin
@@ -48,19 +48,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Falta configurar R2_BUCKET_NAME.' }, { status: 500 })
     }
 
+    const objectId = randomUUID()
     const extension = EXTENSION_BY_TYPE[mimeType]
-    const key = `students/${studentId}/${randomUUID()}.${extension}`
+    const previewExtension = EXTENSION_BY_TYPE[preview.mimeType]
+    const key = `students/${studentId}/originals/${objectId}.${extension}`
+    const thumbnailKey = `students/${studentId}/previews/${objectId}.${previewExtension}`
 
-    const command = new PutObjectCommand({
+    const originalCommand = new PutObjectCommand({
       Bucket: bucket,
       Key: key,
       ContentType: mimeType,
       ContentLength: fileSize,
     })
+    const previewCommand = new PutObjectCommand({
+      Bucket: bucket,
+      Key: thumbnailKey,
+      ContentType: preview.mimeType,
+      ContentLength: preview.fileSize,
+    })
 
-    const uploadUrl = await getSignedUrl(r2, command, { expiresIn: 300 })
+    const [uploadUrl, previewUploadUrl] = await Promise.all([
+      getSignedUrl(r2, originalCommand, { expiresIn: 300 }),
+      getSignedUrl(r2, previewCommand, { expiresIn: 300 }),
+    ])
 
-    return NextResponse.json({ uploadUrl, key })
+    return NextResponse.json({ uploadUrl, key, previewUploadUrl, thumbnailKey })
   } catch (error) {
     console.error('Error generando URL de carga:', error)
     return NextResponse.json({ error: 'No se pudo iniciar la carga.' }, { status: 500 })

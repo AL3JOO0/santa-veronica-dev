@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
           id: photo.id,
           fileName: photo.original_filename,
           url,
+          hasEmbeddedWatermark: Boolean(photo.thumbnail_key),
         }
       }),
     )

@@ -30,24 +30,39 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
-    const { studentId, key, filename, mimeType } = parsed.data
-    if (!key.startsWith(`students/${studentId}/`)) {
+    const { studentId, key, thumbnailKey, filename, mimeType, preview } = parsed.data
+    const studentPrefix = `students/${studentId}/`
+    if (
+      !key.startsWith(`${studentPrefix}originals/`) ||
+      !thumbnailKey.startsWith(`${studentPrefix}previews/`) ||
+      key === thumbnailKey
+    ) {
       return NextResponse.json(
-        { ok: false, message: 'La ruta de la fotografía no es válida.' },
+        { ok: false, message: 'Las rutas de la fotografía no son válidas.' },
         { status: 400 },
       )
     }
 
     const bucket = process.env.R2_BUCKET_NAME
     if (!bucket) throw new Error('Falta configurar R2_BUCKET_NAME.')
-    const object = await r2.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
+
+    const [object, previewObject] = await Promise.all([
+      r2.send(new HeadObjectCommand({ Bucket: bucket, Key: key })),
+      r2.send(new HeadObjectCommand({ Bucket: bucket, Key: thumbnailKey })),
+    ])
     const actualSize = object.ContentLength || 0
     const actualType = object.ContentType || ''
+    const actualPreviewSize = previewObject.ContentLength || 0
+    const actualPreviewType = previewObject.ContentType || ''
     if (
       actualSize <= 0 ||
       actualSize > MAX_IMAGE_BYTES ||
       !ALLOWED_IMAGE_TYPES.includes(actualType as (typeof ALLOWED_IMAGE_TYPES)[number]) ||
-      actualType !== mimeType
+      actualType !== mimeType ||
+      actualPreviewSize <= 0 ||
+      actualPreviewSize > MAX_IMAGE_BYTES ||
+      !ALLOWED_IMAGE_TYPES.includes(actualPreviewType as (typeof ALLOWED_IMAGE_TYPES)[number]) ||
+      actualPreviewType !== preview.mimeType
     ) {
       return NextResponse.json(
         { ok: false, message: 'El objeto subido no coincide con una imagen permitida.' },
@@ -71,6 +86,7 @@ export async function POST(request: NextRequest) {
       .insert({
         student_id: studentId,
         storage_key: key,
+        thumbnail_key: thumbnailKey,
         original_filename: filename,
         mime_type: mimeType,
         file_size: actualSize,

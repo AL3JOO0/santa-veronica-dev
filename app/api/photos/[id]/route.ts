@@ -1,4 +1,4 @@
-import { DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { DeleteObjectsCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { r2 } from '@/lib/r2'
@@ -31,7 +31,7 @@ export async function DELETE(
 
     const { data: photo, error: fetchError } = await admin
       .from('photos')
-      .select('storage_key')
+      .select('storage_key, thumbnail_key')
       .eq('id', id)
       .single()
 
@@ -44,10 +44,17 @@ export async function DELETE(
       return NextResponse.json({ error: 'Falta configurar R2_BUCKET_NAME.' }, { status: 500 })
     }
 
+    const keys = [photo.storage_key, photo.thumbnail_key].filter(
+      (key): key is string => Boolean(key),
+    )
+
     await r2.send(
-      new DeleteObjectCommand({
+      new DeleteObjectsCommand({
         Bucket: bucket,
-        Key: photo.storage_key,
+        Delete: {
+          Objects: keys.map((Key) => ({ Key })),
+          Quiet: true,
+        },
       }),
     )
 

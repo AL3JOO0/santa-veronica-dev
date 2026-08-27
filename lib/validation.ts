@@ -83,15 +83,23 @@ export const bulkStudentsSchema = z.object({
 
 const imageTypeSchema = z.enum(ALLOWED_IMAGE_TYPES)
 
-export const photoSignSchema = z.object({
-  studentId: idSchema,
+const uploadImageSchema = z.object({
   filename: z.string().trim().min(1).max(255),
   mimeType: imageTypeSchema,
   fileSize: z.number().int().positive().max(MAX_IMAGE_BYTES),
 }).strict()
 
+export const photoSignSchema = z.object({
+  studentId: idSchema,
+  filename: uploadImageSchema.shape.filename,
+  mimeType: uploadImageSchema.shape.mimeType,
+  fileSize: uploadImageSchema.shape.fileSize,
+  preview: uploadImageSchema,
+}).strict()
+
 export const photoRegisterSchema = photoSignSchema.extend({
   key: z.string().trim().min(1).max(500),
+  thumbnailKey: z.string().trim().min(1).max(500),
 }).strict()
 
 export const selectionSchema = z.object({

@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { createWatermarkedPreview } from "@/lib/client/image-watermark"
 import type { Photo } from "@/lib/types"
 
 interface PhotoApiRow {
@@ -96,7 +97,11 @@ export function usePhotos(studentId: string) {
     file: File,
     onProgress?: (percent: number) => void
   ) {
-    // 1. pedir URL firmada de subida
+    // 1. generar localmente una vista reducida con la marca incrustada
+    onProgress?.(0)
+    const preview = await createWatermarkedPreview(file)
+
+    // 2. pedir URLs firmadas para el original y la vista marcada
     const signRes = await fetch("/api/photos/sign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -105,19 +110,53 @@ export function usePhotos(studentId: string) {
         filename: file.name,
         mimeType: file.type,
         fileSize: file.size,
+        preview: {
+          filename: preview.filename,
+          mimeType: preview.mimeType,
+          fileSize: preview.blob.size,
+        },
       }),
     })
-    if (!signRes.ok) throw new Error("No se pudo iniciar la subida.")
-    const { uploadUrl, key } = await signRes.json()
+    const signBody = (await signRes.json().catch(() => null)) as
+      | {
+          uploadUrl?: string
+          key?: string
+          previewUploadUrl?: string
+          thumbnailKey?: string
+          error?: string
+        }
+      | null
+    if (
+      !signRes.ok ||
+      !signBody?.uploadUrl ||
+      !signBody.key ||
+      !signBody.previewUploadUrl ||
+      !signBody.thumbnailKey
+    ) {
+      throw new Error(signBody?.error || "No se pudo iniciar la subida.")
+    }
 
-    // 2. subir directo al almacenamiento S3 compatible (MinIO o Cloudflare R2)
-    await new Promise<void>((resolve, reject) => {
+    const totalBytes = file.size + preview.blob.size
+    let originalLoaded = 0
+    let previewLoaded = 0
+    const reportProgress = () => {
+      if (!onProgress) return
+      onProgress(Math.min(99, Math.round(((originalLoaded + previewLoaded) / totalBytes) * 100)))
+    }
+
+    const uploadToR2 = (
+      uploadUrl: string,
+      body: Blob,
+      mimeType: string,
+      updateLoaded: (bytes: number) => void,
+    ) => new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       xhr.open("PUT", uploadUrl)
-      xhr.setRequestHeader("Content-Type", file.type)
+      xhr.setRequestHeader("Content-Type", mimeType)
       xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable && onProgress) {
-          onProgress(Math.round((event.loaded / event.total) * 100))
+        if (event.lengthComputable) {
+          updateLoaded(event.loaded)
+          reportProgress()
         }
       }
       xhr.onload = () => {
@@ -125,19 +164,38 @@ export function usePhotos(studentId: string) {
         else reject(new Error("Falló la subida al almacenamiento."))
       }
       xhr.onerror = () => reject(new Error("Falló la subida al almacenamiento."))
-      xhr.send(file)
+      xhr.send(body)
     })
 
-    // 3. registrar en Supabase desde el backend para no depender de RLS del navegador
+    // 3. subir ambas copias directamente a R2, sin transportar sus bytes por Vercel
+    await uploadToR2(signBody.uploadUrl, file, file.type, (bytes) => {
+      originalLoaded = bytes
+    })
+    await uploadToR2(
+      signBody.previewUploadUrl,
+      preview.blob,
+      preview.mimeType,
+      (bytes) => {
+        previewLoaded = bytes
+      },
+    )
+
+    // 4. registrar las dos claves en Supabase desde el backend
     const registerRes = await fetch("/api/photos/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         studentId,
-        key,
+        key: signBody.key,
+        thumbnailKey: signBody.thumbnailKey,
         filename: file.name,
         mimeType: file.type,
         fileSize: file.size,
+        preview: {
+          filename: preview.filename,
+          mimeType: preview.mimeType,
+          fileSize: preview.blob.size,
+        },
       }),
     })
 
@@ -145,6 +203,8 @@ export function usePhotos(studentId: string) {
       const body = await registerRes.json().catch(() => null)
       throw new Error(body?.message ?? "La foto se subió, pero no pudo registrarse.")
     }
+
+    onProgress?.(100)
   }
 
   async function removePhoto(id: string) {

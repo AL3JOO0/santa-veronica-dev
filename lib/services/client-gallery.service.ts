@@ -2,6 +2,7 @@ export interface ClientGalleryPhoto {
   id: string
   fileName: string
   url: string
+  hasEmbeddedWatermark: boolean
 }
 
 interface ClientGalleryData {
