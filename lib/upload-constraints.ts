@@ -5,4 +5,5 @@ export const ALLOWED_IMAGE_TYPES = [
 ] as const
 
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024
-export const MAX_FILES_PER_UPLOAD = 20
+export const MAX_FILES_PER_UPLOAD = 1_000
+export const MAX_PARALLEL_UPLOADS = 3

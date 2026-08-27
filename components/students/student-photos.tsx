@@ -14,11 +14,18 @@ import { PhotoDropzone } from "@/components/photos/photo-dropzone"
 import { PhotoGrid } from "@/components/photos/photo-grid"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { MAX_PARALLEL_UPLOADS } from "@/lib/upload-constraints"
 
 interface UploadTask {
   id: string
   filename: string
   progress: number
+}
+
+interface UploadSummary {
+  total: number
+  completed: number
+  failed: number
 }
 
 interface Props {
@@ -47,51 +54,79 @@ export function StudentPhotos({ eventId, studentId }: Props) {
     removePhoto,
   } = usePhotos(studentId)
 
-  const [tasks, setTasks] = React.useState<UploadTask[]>([])
+  const [activeTasks, setActiveTasks] = React.useState<UploadTask[]>([])
+  const [uploadSummary, setUploadSummary] = React.useState<UploadSummary | null>(null)
+  const [isUploading, setIsUploading] = React.useState(false)
 
   async function handleFiles(files: File[]) {
-    const newTasks: UploadTask[] = files.map((f) => ({
-      id: crypto.randomUUID(),
-      filename: f.name,
-      progress: 0,
-    }))
-    setTasks((prev) => [...prev, ...newTasks])
+    if (isUploading || files.length === 0) return
+
+    setIsUploading(true)
+    setActiveTasks([])
+    setUploadSummary({ total: files.length, completed: 0, failed: 0 })
 
     let nextIndex = 0
     let uploadedCount = 0
+    let failedCount = 0
+    const failedFilenames: string[] = []
+
     const worker = async () => {
       while (nextIndex < files.length) {
         const i = nextIndex++
         const file = files[i]
-        const taskId = newTasks[i].id
+        const taskId = crypto.randomUUID()
+
+        setActiveTasks((current) => [
+          ...current,
+          { id: taskId, filename: file.name, progress: 0 },
+        ])
+
         try {
           await uploadPhoto(file, (percent) => {
-            setTasks((prev) =>
-              prev.map((t) =>
+            setActiveTasks((current) =>
+              current.map((t) =>
                 t.id === taskId ? { ...t, progress: percent } : t
               )
             )
           })
           uploadedCount += 1
-        } catch (err) {
-          toast.error(
-            err instanceof Error
-              ? err.message
-              : `No se pudo subir ${file.name}.`
+          setUploadSummary((current) =>
+            current ? { ...current, completed: current.completed + 1 } : current,
+          )
+        } catch {
+          failedCount += 1
+          if (failedFilenames.length < 3) failedFilenames.push(file.name)
+          setUploadSummary((current) =>
+            current ? { ...current, failed: current.failed + 1 } : current,
           )
         } finally {
-          setTasks((prev) => prev.filter((t) => t.id !== taskId))
+          setActiveTasks((current) => current.filter((t) => t.id !== taskId))
         }
       }
     }
 
-    await Promise.all(
-      Array.from({ length: Math.min(3, files.length) }, () => worker()),
-    )
+    try {
+      await Promise.all(
+        Array.from(
+          { length: Math.min(MAX_PARALLEL_UPLOADS, files.length) },
+          () => worker(),
+        ),
+      )
 
-    await reload()
-    if (uploadedCount > 0) {
-      toast.success(`${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'} correctamente.`)
+      if (uploadedCount > 0) {
+        await reload()
+        toast.success(`${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'} correctamente.`)
+      }
+
+      if (failedCount > 0) {
+        const examples = failedFilenames.length > 0
+          ? ` Revisa: ${failedFilenames.join(', ')}${failedCount > failedFilenames.length ? '…' : ''}`
+          : ''
+        toast.error(`${failedCount} foto${failedCount === 1 ? '' : 's'} no se pudieron subir.${examples}`)
+      }
+    } finally {
+      setIsUploading(false)
+      setActiveTasks([])
     }
   }
 
@@ -151,11 +186,36 @@ export function StudentPhotos({ eventId, studentId }: Props) {
 
       <Card>
         <CardContent className="flex flex-col gap-4 p-6">
-          <PhotoDropzone onFiles={handleFiles} disabled={tasks.length > 0} />
+          <PhotoDropzone onFiles={handleFiles} disabled={isUploading} />
 
-          {tasks.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {tasks.map((t) => (
+          {uploadSummary ? (
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="font-medium">
+                  {isUploading ? 'Subiendo fotografías…' : 'Carga finalizada'}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {uploadSummary.completed + uploadSummary.failed} de {uploadSummary.total} procesadas
+                  {uploadSummary.failed > 0 ? ` · ${uploadSummary.failed} con error` : ''}
+                </span>
+              </div>
+
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: `${Math.round(
+                      ((uploadSummary.completed +
+                        uploadSummary.failed +
+                        activeTasks.reduce((total, task) => total + task.progress / 100, 0)) /
+                        uploadSummary.total) *
+                        100,
+                    )}%`,
+                  }}
+                />
+              </div>
+
+              {activeTasks.map((t) => (
                 <div key={t.id} className="flex items-center gap-3 text-sm">
                   <span className="w-40 truncate text-muted-foreground">
                     {t.filename}
@@ -172,7 +232,7 @@ export function StudentPhotos({ eventId, studentId }: Props) {
                 </div>
               ))}
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
