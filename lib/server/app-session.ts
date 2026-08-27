@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 export type AppUserType = 'ADMINISTRADOR' | 'ESTUDIANTE'
@@ -38,7 +40,7 @@ function sign(payload: string) {
   return createHmac('sha256', getSessionSecret()).update(payload).digest('base64url')
 }
 
-export function getSessionDuration(remember: boolean) {
+function getSessionDuration(remember: boolean) {
   return remember ? REMEMBER_SESSION_SECONDS : DEFAULT_SESSION_SECONDS
 }
 

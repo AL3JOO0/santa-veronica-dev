@@ -2,12 +2,19 @@ export interface ClientGalleryPhoto {
   id: string
   fileName: string
   url: string
+  hasEmbeddedWatermark: boolean
 }
 
-export interface ClientGalleryData {
+interface ClientGalleryData {
   photos: ClientGalleryPhoto[]
   selectedIds: string[]
   selectionStatus: string | null
+  pagination: {
+    page: number
+    pageSize: number
+    total: number
+    totalPages: number
+  }
 }
 
 interface GalleryResponse extends Partial<ClientGalleryData> {
@@ -15,8 +22,8 @@ interface GalleryResponse extends Partial<ClientGalleryData> {
   message?: string
 }
 
-export async function getClientGallery(): Promise<ClientGalleryData> {
-  const response = await fetch('/api/cliente/galeria', {
+export async function getClientGallery(page = 1, pageSize = 16): Promise<ClientGalleryData> {
+  const response = await fetch(`/api/cliente/galeria?page=${page}&pageSize=${pageSize}`, {
     method: 'GET',
     cache: 'no-store',
   })
@@ -31,6 +38,7 @@ export async function getClientGallery(): Promise<ClientGalleryData> {
     photos: data.photos || [],
     selectedIds: data.selectedIds || [],
     selectionStatus: data.selectionStatus || null,
+    pagination: data.pagination || { page, pageSize, total: 0, totalPages: 1 },
   }
 }
 

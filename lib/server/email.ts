@@ -106,7 +106,7 @@ async function expectReply(
   return reply
 }
 
-export interface SendEmailInput {
+interface SendEmailInput {
   to: string
   subject: string
   text: string

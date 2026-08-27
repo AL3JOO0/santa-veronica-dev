@@ -1,6 +1,3 @@
-"use client"
-
-import * as XLSX from "xlsx"
 import type { StudentStatus } from "@/lib/types"
 
 /*
@@ -20,7 +17,8 @@ const EXAMPLE_ROW = [
   "Pendiente",
 ]
 
-export function downloadStudentTemplate() {
+export async function downloadStudentTemplate() {
+  const XLSX = await import("xlsx")
   const worksheet = XLSX.utils.aoa_to_sheet([HEADERS, EXAMPLE_ROW])
 
   worksheet["!cols"] = [
@@ -71,6 +69,7 @@ function normalizeDocumentNumber(value: string) {
 }
 
 export async function parseStudentFile(file: File): Promise<ParsedStudentRow[]> {
+  const XLSX = await import("xlsx")
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: "array" })
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
@@ -97,7 +96,7 @@ export async function parseStudentFile(file: File): Promise<ParsedStudentRow[]> 
       if (!firstName) errors.push("Falta el nombre")
       if (!lastName) errors.push("Falta el apellido")
       if (!password) errors.push("Falta la contraseña")
-      if (password && password.length < 6) errors.push("La contraseña debe tener mínimo 6 caracteres")
+      if (password && password.length < 8) errors.push("La contraseña debe tener mínimo 8 caracteres")
 
       const normalizedStatus = STATUS_MAP[status.toLowerCase()]
       if (status && !normalizedStatus) {

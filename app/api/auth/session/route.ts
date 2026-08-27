@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import {
-  APP_SESSION_COOKIE,
-  readAppSessionToken,
-} from '@/lib/server/app-session'
+import { getAdminSession, getRequestSession, getStudentSession } from '@/lib/server/auth-guards'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest) {
-  const session = readAppSessionToken(
-    request.cookies.get(APP_SESSION_COOKIE)?.value,
-  )
+  const signedSession = getRequestSession(request)
+  const session = signedSession?.userType === 'ADMINISTRADOR'
+    ? await getAdminSession(request)
+    : await getStudentSession(request)
 
   if (!session) {
     return NextResponse.json({ ok: false }, { status: 401 })

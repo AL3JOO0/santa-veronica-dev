@@ -80,8 +80,6 @@ export function UniversitiesView() {
 
   const {
   events,
-  loading: eventsLoading,
-  error: eventsError,
 } = useEvents()
 
   /*

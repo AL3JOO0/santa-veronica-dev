@@ -32,7 +32,9 @@ export default function ClientGalleryPage() {
   const router = useRouter()
   const [session, setSession] = React.useState<AppSession | null>(null)
   const [photos, setPhotos] = React.useState<ClientGalleryPhoto[]>([])
+  const [totalPhotos, setTotalPhotos] = React.useState(0)
   const [currentPage, setCurrentPage] = React.useState(1)
+  const [pageLoading, setPageLoading] = React.useState(false)
   const [selectedIds, setSelectedIds] = React.useState<string[]>([])
   const [previewId, setPreviewId] = React.useState<string | null>(null)
   const [selectionStatus, setSelectionStatus] = React.useState<string | null>(null)
@@ -63,10 +65,11 @@ export default function ClientGalleryPage() {
 
         setSession(currentSession)
 
-        const gallery = await getClientGallery()
+        const gallery = await getClientGallery(1, PAGE_SIZE)
         if (!active) return
 
         setPhotos(gallery.photos)
+        setTotalPhotos(gallery.pagination.total)
         setSelectedIds(gallery.selectedIds)
         setSelectionStatus(gallery.selectionStatus)
       } catch (error) {
@@ -88,16 +91,8 @@ export default function ClientGalleryPage() {
     }
   }, [router])
 
-  const totalPages = Math.max(1, Math.ceil(photos.length / PAGE_SIZE))
-
-  React.useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages)
-  }, [currentPage, totalPages])
-
-  const pagePhotos = photos.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
-  )
+  const totalPages = Math.max(1, Math.ceil(totalPhotos / PAGE_SIZE))
+  const pagePhotos = photos
 
   const previewPhoto = photos.find((photo) => photo.id === previewId)
 
@@ -109,6 +104,28 @@ export default function ClientGalleryPage() {
         ? current.filter((selectedId) => selectedId !== id)
         : [...current, id],
     )
+  }
+
+  async function changePage(page: number) {
+    const nextPage = Math.min(totalPages, Math.max(1, page))
+    if (nextPage === currentPage || pageLoading) return
+
+    try {
+      setPageLoading(true)
+      setLoadError('')
+      const gallery = await getClientGallery(nextPage, PAGE_SIZE)
+      setPhotos(gallery.photos)
+      setTotalPhotos(gallery.pagination.total)
+      setCurrentPage(nextPage)
+      setPreviewId(null)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (error) {
+      setLoadError(
+        error instanceof Error ? error.message : 'No fue posible cambiar de página.',
+      )
+    } finally {
+      setPageLoading(false)
+    }
   }
 
   async function handleLogout() {
@@ -244,7 +261,7 @@ export default function ClientGalleryPage() {
             <strong className="text-[#444951]">{totalPages}</strong>
           </span>
           <span>
-            {photos.length} fotografías · {selectedIds.length} seleccionadas
+            {totalPhotos} fotografías · {selectedIds.length} seleccionadas
           </span>
         </div>
 
@@ -287,14 +304,17 @@ export default function ClientGalleryPage() {
                       alt={photo.fileName}
                       fill
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 280px"
+                      unoptimized
                       className="object-cover transition-transform duration-300 group-hover:scale-[1.025]"
                     />
 
-                    <div className="pointer-events-none absolute inset-0 flex rotate-[-18deg] items-center justify-center">
-                      <span className="select-none whitespace-nowrap text-[11px] font-bold uppercase tracking-[0.28em] text-white/55 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)] sm:text-xs">
-                        Santa Verónica
-                      </span>
-                    </div>
+                    {!photo.hasEmbeddedWatermark ? (
+                      <div className="pointer-events-none absolute inset-0 flex rotate-[-18deg] items-center justify-center">
+                        <span className="select-none whitespace-nowrap text-[11px] font-bold uppercase tracking-[0.28em] text-white/55 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)] sm:text-xs">
+                          Santa Verónica
+                        </span>
+                      </div>
+                    ) : null}
 
                     <span
                       className={`absolute left-2.5 top-2.5 grid size-7 place-items-center rounded-full border text-white shadow-sm transition ${
@@ -327,14 +347,14 @@ export default function ClientGalleryPage() {
           </div>
         )}
 
-        {photos.length > PAGE_SIZE ? (
+        {totalPhotos > PAGE_SIZE ? (
           <nav
             className="mt-9 flex items-center justify-center gap-1.5"
             aria-label="Paginación"
           >
             <button
-              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-              disabled={currentPage === 1}
+              onClick={() => changePage(currentPage - 1)}
+              disabled={currentPage === 1 || pageLoading}
               className="grid size-9 place-items-center rounded-lg border border-[#e5dfd9] bg-white text-[#666b72] transition hover:border-[#ed7d13]/50 hover:text-[#d76907] disabled:cursor-not-allowed disabled:opacity-35"
             >
               <ChevronLeft className="size-4" />
@@ -344,7 +364,8 @@ export default function ClientGalleryPage() {
               (page) => (
                 <button
                   key={page}
-                  onClick={() => setCurrentPage(page)}
+                  onClick={() => changePage(page)}
+                  disabled={pageLoading}
                   className={`grid size-9 place-items-center rounded-lg text-xs font-semibold transition ${
                     currentPage === page
                       ? 'bg-[#ed7d13] text-white shadow-sm'
@@ -357,10 +378,8 @@ export default function ClientGalleryPage() {
             )}
 
             <button
-              onClick={() =>
-                setCurrentPage((page) => Math.min(totalPages, page + 1))
-              }
-              disabled={currentPage === totalPages}
+              onClick={() => changePage(currentPage + 1)}
+              disabled={currentPage === totalPages || pageLoading}
               className="grid size-9 place-items-center rounded-lg border border-[#e5dfd9] bg-white text-[#666b72] transition hover:border-[#ed7d13]/50 hover:text-[#d76907] disabled:cursor-not-allowed disabled:opacity-35"
             >
               <ChevronRight className="size-4" />
@@ -390,13 +409,16 @@ export default function ClientGalleryPage() {
                 alt={previewPhoto.fileName}
                 fill
                 sizes="768px"
+                unoptimized
                 className="object-contain"
               />
-              <div className="pointer-events-none absolute inset-0 flex rotate-[-18deg] items-center justify-center">
-                <span className="select-none whitespace-nowrap text-lg font-bold uppercase tracking-[0.34em] text-white/45 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] sm:text-2xl">
-                  Santa Verónica
-                </span>
-              </div>
+              {!previewPhoto.hasEmbeddedWatermark ? (
+                <div className="pointer-events-none absolute inset-0 flex rotate-[-18deg] items-center justify-center">
+                  <span className="select-none whitespace-nowrap text-lg font-bold uppercase tracking-[0.34em] text-white/45 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] sm:text-2xl">
+                    Santa Verónica
+                  </span>
+                </div>
+              ) : null}
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-white">
               <span className="truncate text-xs text-white/70">

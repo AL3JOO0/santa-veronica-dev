@@ -1,248 +1,134 @@
 'use server'
 
 import bcrypt from 'bcryptjs'
-import { supabase } from '@/lib/supabase'
+import { revalidatePath } from 'next/cache'
 
-interface CreateEventActionInput {
-  universityId: string
-  name: string
-  description: string
-  date: string
-  password: string
-  status: string
+import { requireAdminSession } from '@/lib/server/auth-guards'
+import { createSupabaseAdminClient } from '@/lib/server/supabase-admin'
+import type { EventItem, Status } from '@/lib/types'
+import {
+  createEventSchema,
+  firstZodError,
+  idSchema,
+  updateEventSchema,
+} from '@/lib/validation'
+
+const EVENT_COLUMNS =
+  'id, institution_id, name, description, event_date, status, created_at, updated_at'
+
+function toDatabaseStatus(status: Status) {
+  return {
+    activo: 'ACTIVE',
+    borrador: 'DRAFT',
+    cerrado: 'CLOSED',
+    archivado: 'ARCHIVED',
+  }[status]
 }
 
-interface UpdateEventActionInput {
-  id: string
-  universityId: string
-  name: string
-  description: string
-  date: string
-  password?: string
-  status: string
+function fromDatabaseStatus(status: string): Status {
+  return ({
+    ACTIVE: 'activo',
+    DRAFT: 'borrador',
+    CLOSED: 'cerrado',
+    ARCHIVED: 'archivado',
+  } as const)[status.toUpperCase()] || 'borrador'
 }
 
-function mapEventStatus(status: string) {
-  switch (status.toLowerCase()) {
-    case 'activo':
-      return 'ACTIVE'
-
-    case 'borrador':
-      return 'DRAFT'
-
-    case 'cerrado':
-      return 'CLOSED'
-
-    case 'archivado':
-      return 'ARCHIVED'
-
-    default:
-      return 'DRAFT'
+function mapEvent(row: Record<string, unknown>): EventItem {
+  return {
+    id: String(row.id),
+    universityId: String(row.institution_id),
+    name: String(row.name),
+    description: typeof row.description === 'string' ? row.description : '',
+    date: typeof row.event_date === 'string' ? row.event_date : '',
+    status: fromDatabaseStatus(String(row.status)),
+    createdAt: String(row.created_at),
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
   }
 }
 
-/*
- * =========================================================
- * CREAR EVENTO
- * =========================================================
- */
+export async function createEventAction(input: unknown): Promise<EventItem> {
+  await requireAdminSession()
+  const parsed = createEventSchema.safeParse(input)
+  if (!parsed.success) throw new Error(firstZodError(parsed.error))
 
-export async function createEventAction(
-  input: CreateEventActionInput,
-) {
-  if (!input.name.trim()) {
-    throw new Error(
-      'El nombre del evento es obligatorio.',
-    )
-  }
-
-  if (!input.universityId) {
-    throw new Error(
-      'La universidad es obligatoria.',
-    )
-  }
-
-  if (!input.date) {
-    throw new Error(
-      'La fecha del evento es obligatoria.',
-    )
-  }
-
-  if (!input.password.trim()) {
-    throw new Error(
-      'La contraseña de cohorte es obligatoria.',
-    )
-  }
-
-  const passwordHash = await bcrypt.hash(
-    input.password.trim(),
-    12,
-  )
-
-  const status = mapEventStatus(
-    input.status,
-  )
-
-  const { data, error } = await supabase
+  const value = parsed.data
+  const passwordHash = await bcrypt.hash(value.password, 12)
+  const admin = createSupabaseAdminClient()
+  const { data, error } = await admin
     .from('events')
     .insert({
-      institution_id:
-        input.universityId,
-
-      name:
-        input.name.trim(),
-
-      description:
-        input.description.trim() || null,
-
-      event_date:
-        input.date || null,
-
-      cohort_password_hash:
-        passwordHash,
-
-      status,
+      institution_id: value.universityId,
+      name: value.name,
+      description: value.description || null,
+      event_date: value.date,
+      cohort_password_hash: passwordHash,
+      status: toDatabaseStatus(value.status),
     })
-    .select()
+    .select(EVENT_COLUMNS)
     .single()
 
   if (error) {
-    console.error(
-      'Error creando evento:',
-      error,
-    )
-
-    throw new Error(error.message)
+    console.error('Error creando evento:', error)
+    throw new Error('No se pudo crear el evento.')
   }
 
-  return data
+  revalidatePath('/')
+  revalidatePath('/eventos')
+  return mapEvent(data)
 }
 
-/*
- * =========================================================
- * EDITAR EVENTO
- * =========================================================
- */
+export async function updateEventAction(input: unknown): Promise<EventItem> {
+  await requireAdminSession()
+  const parsed = updateEventSchema.safeParse(input)
+  if (!parsed.success) throw new Error(firstZodError(parsed.error))
 
-export async function updateEventAction(
-  input: UpdateEventActionInput,
-) {
-  if (!input.id) {
-    throw new Error(
-      'El ID del evento es obligatorio.',
-    )
+  const value = parsed.data
+  const payload: Record<string, unknown> = {
+    institution_id: value.universityId,
+    name: value.name,
+    description: value.description || null,
+    event_date: value.date,
+    status: toDatabaseStatus(value.status),
+    updated_at: new Date().toISOString(),
   }
 
-  if (!input.name.trim()) {
-    throw new Error(
-      'El nombre del evento es obligatorio.',
-    )
+  if (value.password) {
+    payload.cohort_password_hash = await bcrypt.hash(value.password, 12)
   }
 
-  if (!input.universityId) {
-    throw new Error(
-      'La universidad es obligatoria.',
-    )
-  }
-
-  if (!input.date) {
-    throw new Error(
-      'La fecha del evento es obligatoria.',
-    )
-  }
-
-  const payload: Record<
-    string,
-    unknown
-  > = {
-    institution_id:
-      input.universityId,
-
-    name:
-      input.name.trim(),
-
-    description:
-      input.description.trim() || null,
-
-    event_date:
-      input.date || null,
-
-    status:
-      mapEventStatus(input.status),
-
-    updated_at:
-      new Date().toISOString(),
-  }
-
-  /*
-   * Si el usuario escribió una nueva contraseña,
-   * generamos un nuevo hash.
-   *
-   * Si viene vacía, conservamos la actual.
-   */
-
-  if (input.password?.trim()) {
-    payload.cohort_password_hash =
-      await bcrypt.hash(
-        input.password.trim(),
-        12,
-      )
-  }
-
-  const {
-    data,
-    error,
-  } = await supabase
+  const admin = createSupabaseAdminClient()
+  const { data, error } = await admin
     .from('events')
     .update(payload)
-    .eq('id', input.id)
-    .select()
+    .eq('id', value.id)
+    .select(EVENT_COLUMNS)
     .single()
 
   if (error) {
-    console.error(
-      'Error actualizando evento:',
-      error,
-    )
-
-    throw new Error(error.message)
+    console.error('Error actualizando evento:', error)
+    throw new Error('No se pudo actualizar el evento.')
   }
 
-  return data
+  revalidatePath('/')
+  revalidatePath('/eventos')
+  revalidatePath(`/eventos/${value.id}`)
+  return mapEvent(data)
 }
 
-/*
- * =========================================================
- * ELIMINAR EVENTO
- * =========================================================
- */
+export async function deleteEventAction(id: unknown) {
+  await requireAdminSession()
+  const parsedId = idSchema.safeParse(id)
+  if (!parsedId.success) throw new Error(firstZodError(parsedId.error))
 
-export async function deleteEventAction(
-  id: string,
-) {
-  if (!id) {
-    throw new Error(
-      'El ID del evento es obligatorio.',
-    )
-  }
-
-  const {
-    error,
-  } = await supabase
-    .from('events')
-    .delete()
-    .eq('id', id)
-
+  const admin = createSupabaseAdminClient()
+  const { error } = await admin.from('events').delete().eq('id', parsedId.data)
   if (error) {
-    console.error(
-      'Error eliminando evento:',
-      error,
-    )
-
-    throw new Error(error.message)
+    console.error('Error eliminando evento:', error)
+    throw new Error('No se pudo eliminar el evento.')
   }
 
-  return {
-    success: true,
-  }
+  revalidatePath('/')
+  revalidatePath('/eventos')
+  return { success: true }
 }

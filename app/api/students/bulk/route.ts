@@ -6,64 +6,45 @@ import {
   hashStudentPassword,
   normalizeDocumentNumber,
 } from '@/lib/server/student-password'
+import { isSameOriginRequest } from '@/lib/server/request-security'
+import { bulkStudentsSchema, firstZodError } from '@/lib/validation'
 
 export const runtime = 'nodejs'
-
-const MAX_BATCH_SIZE = 40
-const ALLOWED_STATUSES = new Set(['PENDING', 'SELECTION_IN_PROGRESS', 'SELECTION_SENT'])
-
-interface BulkRow {
-  documentNumber?: string
-  firstName?: string
-  lastName?: string
-  email?: string | null
-  password?: string
-  status?: string
-}
+export const maxDuration = 10
 
 export async function POST(request: NextRequest) {
-  if (!getAdminSession(request)) {
+  if (!(await getAdminSession(request))) {
     return NextResponse.json(
       { ok: false, message: 'No tienes permisos para importar estudiantes.' },
       { status: 401 },
     )
   }
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ ok: false, message: 'Origen no permitido.' }, { status: 403 })
+  }
 
   try {
-    const body = (await request.json().catch(() => null)) as
-      | { eventId?: string; students?: BulkRow[] }
-      | null
-
-    const eventId = body?.eventId?.trim() || ''
-    const rows = Array.isArray(body?.students) ? body!.students! : []
-
-    if (!eventId || rows.length === 0) {
+    const parsed = bulkStudentsSchema.safeParse(await request.json().catch(() => null))
+    if (!parsed.success) {
       return NextResponse.json(
-        { ok: false, message: 'No hay estudiantes para importar.' },
+        { ok: false, message: firstZodError(parsed.error) },
         { status: 400 },
       )
     }
 
-    if (rows.length > MAX_BATCH_SIZE) {
-      return NextResponse.json(
-        { ok: false, message: `Cada lote puede contener máximo ${MAX_BATCH_SIZE} estudiantes.` },
-        { status: 400 },
-      )
-    }
+    const { eventId, students: rows } = parsed.data
 
     const normalized = rows.map((row, index) => {
       const documentNumber = normalizeDocumentNumber(row.documentNumber || '')
-      const firstName = row.firstName?.trim() || ''
-      const lastName = row.lastName?.trim() || ''
-      const email = row.email?.trim() || null
-      const password = row.password || ''
-      const status = row.status || 'PENDING'
+      const firstName = row.firstName
+      const lastName = row.lastName
+      const email = row.email
+      const password = row.password
+      const status = row.status
 
       if (!documentNumber || !firstName || !lastName || !password) {
         throw new Error(`Fila del lote ${index + 1}: documento, nombre, apellido y contraseña son obligatorios.`)
       }
-      if (!ALLOWED_STATUSES.has(status)) throw new Error(`Fila del lote ${index + 1}: estado no válido.`)
-
       return { documentNumber, firstName, lastName, email, password, status }
     })
 

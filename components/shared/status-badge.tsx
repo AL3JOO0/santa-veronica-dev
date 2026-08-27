@@ -8,6 +8,7 @@ const config: Record<Status, { label: string; dot: string }> = {
     label: 'Borrador',
     dot: 'bg-transparent ring-1 ring-inset ring-muted-foreground',
   },
+  cerrado: { label: 'Cerrado', dot: 'bg-amber-500' },
   archivado: { label: 'Archivado', dot: 'bg-muted-foreground/40' },
 }
 

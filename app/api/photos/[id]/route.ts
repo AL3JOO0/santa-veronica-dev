@@ -1,27 +1,37 @@
-import { DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { DeleteObjectsCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { r2 } from '@/lib/r2'
 import { getAdminSession } from '@/lib/server/auth-guards'
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin'
+import { isSameOriginRequest } from '@/lib/server/request-security'
+import { firstZodError, idSchema } from '@/lib/validation'
 
 export const runtime = 'nodejs'
+export const maxDuration = 10
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!getAdminSession(request)) {
+  if (!(await getAdminSession(request))) {
     return NextResponse.json({ error: 'No autorizado.' }, { status: 401 })
+  }
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: 'Origen no permitido.' }, { status: 403 })
   }
 
   try {
-    const { id } = await params
+    const parsedId = idSchema.safeParse((await params).id)
+    if (!parsedId.success) {
+      return NextResponse.json({ error: firstZodError(parsedId.error) }, { status: 400 })
+    }
+    const id = parsedId.data
     const admin = createSupabaseAdminClient()
 
     const { data: photo, error: fetchError } = await admin
       .from('photos')
-      .select('storage_key')
+      .select('storage_key, thumbnail_key')
       .eq('id', id)
       .single()
 
@@ -34,10 +44,17 @@ export async function DELETE(
       return NextResponse.json({ error: 'Falta configurar R2_BUCKET_NAME.' }, { status: 500 })
     }
 
+    const keys = [photo.storage_key, photo.thumbnail_key].filter(
+      (key): key is string => Boolean(key),
+    )
+
     await r2.send(
-      new DeleteObjectCommand({
+      new DeleteObjectsCommand({
         Bucket: bucket,
-        Key: photo.storage_key,
+        Delete: {
+          Objects: keys.map((Key) => ({ Key })),
+          Quiet: true,
+        },
       }),
     )
 

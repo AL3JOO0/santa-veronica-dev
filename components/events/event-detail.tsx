@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
+import dynamic from "next/dynamic"
 import { useStudents } from "@/hooks/use-students"
 
 import {
@@ -25,11 +26,15 @@ import { NotFoundState } from "@/components/shared/not-found-state"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { EventDialog } from "@/components/forms/event-dialog"
 import { StudentDialog } from "@/components/forms/student-dialog"
-import { BulkStudentDialog } from "@/components/forms/bulk-student-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
 import type { EventItem, Student } from "@/lib/types"
+
+const BulkStudentDialog = dynamic(
+  () => import("@/components/forms/bulk-student-dialog").then((module) => module.BulkStudentDialog),
+  { ssr: false },
+)
 
 interface Props {
   id: string
@@ -63,7 +68,6 @@ export function EventDetail({ id }: Props) {
     addStudent,
     bulkAddStudents,
     editStudent,
-    removeStudent,
     reload: reloadStudents,
   } = useStudents(id)
 
@@ -81,12 +85,7 @@ export function EventDetail({ id }: Props) {
 
   const eventStudents = students
 
-  const studentIds = useMemo(
-    () => eventStudents.map((s) => s.id),
-    [eventStudents],
-  )
-
-  const { count: photoCount } = useEventPhotoCount(studentIds)
+  const { count: photoCount } = useEventPhotoCount(id)
 
   /*
    * =========================================================
@@ -311,7 +310,7 @@ export function EventDetail({ id }: Props) {
                   </div>
                   <p className="text-sm font-medium">No hay estudiantes registrados</p>
                   <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-                    Aún no hay nadie en la lista. Haz clic en "Agregar estudiante" para registrar al primero, o usa "Importar Excel" para cargar varios a la vez.
+                    Aún no hay nadie en la lista. Haz clic en &quot;Agregar estudiante&quot; para registrar al primero, o usa &quot;Importar Excel&quot; para cargar varios a la vez.
                   </p>
                 </div>
               ) : (
@@ -464,16 +463,18 @@ export function EventDetail({ id }: Props) {
         }}
       />
 
-      <BulkStudentDialog
-        open={bulkDialogOpen}
-        onOpenChange={setBulkDialogOpen}
-        eventId={id}
-        existingDocuments={eventStudents.map((s) => s.documentNumber)}
-        onBulkCreate={bulkAddStudents}
-        onSaved={async () => {
-          await reloadStudents()
-        }}
-      />
+      {bulkDialogOpen && (
+        <BulkStudentDialog
+          open={bulkDialogOpen}
+          onOpenChange={setBulkDialogOpen}
+          eventId={id}
+          existingDocuments={eventStudents.map((s) => s.documentNumber)}
+          onBulkCreate={bulkAddStudents}
+          onSaved={async () => {
+            await reloadStudents()
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deletingEvent}

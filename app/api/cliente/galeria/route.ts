@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import {
-  APP_SESSION_COOKIE,
-  readAppSessionToken,
-} from '@/lib/server/app-session'
+import { getStudentSession } from '@/lib/server/auth-guards'
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin'
 import { getPhotoReadUrl } from '@/lib/r2'
+import { firstZodError, paginationSchema } from '@/lib/validation'
 
 export const runtime = 'nodejs'
+export const maxDuration = 10
+
+interface GalleryPhotoRow {
+  id: string
+  storage_key: string
+  thumbnail_key: string | null
+  original_filename: string
+}
+
+interface SelectionPhotoRow {
+  photo_id: string
+}
 
 function cleanStorageKey(value: string) {
   return value.replace(/^\/+/, '')
@@ -15,9 +25,7 @@ function cleanStorageKey(value: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    const session = readAppSessionToken(
-      request.cookies.get(APP_SESSION_COOKIE)?.value,
-    )
+    const session = await getStudentSession(request)
 
     if (!session) {
       return NextResponse.json(
@@ -26,22 +34,30 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    if (session.userType !== 'ESTUDIANTE') {
+    const admin = createSupabaseAdminClient()
+    const pagination = paginationSchema.safeParse({
+      page: request.nextUrl.searchParams.get('page') || undefined,
+      pageSize: request.nextUrl.searchParams.get('pageSize') || undefined,
+    })
+    if (!pagination.success) {
       return NextResponse.json(
-        { ok: false, message: 'Este acceso es exclusivo para estudiantes.' },
-        { status: 403 },
+        { ok: false, message: firstZodError(pagination.error) },
+        { status: 400 },
       )
     }
+    const { page, pageSize } = pagination.data
+    const from = (page - 1) * pageSize
+    const to = from + pageSize - 1
 
-    const admin = createSupabaseAdminClient()
-
-    const { data: photoRows, error: photosError } = await admin
+    const { data: photoRows, error: photosError, count } = await admin
       .from('photos')
       .select(
         'id, storage_key, thumbnail_key, original_filename, created_at',
+        { count: 'exact' },
       )
       .eq('student_id', session.profileId)
       .order('created_at', { ascending: true })
+      .range(from, to)
 
     if (photosError) {
       console.error('Error obteniendo fotografías:', photosError)
@@ -52,7 +68,7 @@ export async function GET(request: NextRequest) {
     }
 
     const photos = await Promise.all(
-      (photoRows || []).map(async (photo: any) => {
+      (photoRows || []).map(async (photo: GalleryPhotoRow) => {
         const previewKey = cleanStorageKey(
           photo.thumbnail_key || photo.storage_key,
         )
@@ -65,6 +81,7 @@ export async function GET(request: NextRequest) {
           id: photo.id,
           fileName: photo.original_filename,
           url,
+          hasEmbeddedWatermark: Boolean(photo.thumbnail_key),
         }
       }),
     )
@@ -85,7 +102,7 @@ export async function GET(request: NextRequest) {
         .select('photo_id')
         .eq('selection_id', latestSelection.id)
 
-      selectedIds = (selectedRows || []).map((row: any) => row.photo_id)
+      selectedIds = (selectedRows || []).map((row: SelectionPhotoRow) => row.photo_id)
     }
 
     return NextResponse.json({
@@ -93,6 +110,12 @@ export async function GET(request: NextRequest) {
       photos,
       selectedIds,
       selectionStatus: latestSelection?.status || null,
+      pagination: {
+        page,
+        pageSize,
+        total: count || 0,
+        totalPages: Math.max(1, Math.ceil((count || 0) / pageSize)),
+      },
     })
   } catch (error) {
     console.error('Error cargando galería del estudiante:', error)
